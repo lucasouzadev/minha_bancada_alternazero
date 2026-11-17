@@ -12,6 +12,12 @@ A tela ocupa só a área visível (acima do teclado) e nunca rola inteira; a pr�
 Rascunho automático no aparelho (recarregar não perde nada), "Duplicar drop" e medidas prontas.
 No iPhone: Compartilhar → **Adicionar à Tela de Início** abre o app em tela cheia (sem a barra do Safari).
 
+## Visualizador (`/c/:slug`)
+
+Arrastar a alça da folha (ou tocar nela) recolhe os detalhes e deixa só a caixa em tela; arrastar de novo fecha. Em telas largas o painel lateral recolhe pelo botão ›, e um botão "Detalhes" traz de volta.
+Três modos no topo: **Caixa** (3D), **Arte** (só a arte, face por face, com zoom) e **Planificada** (a faca inteira, com guias de dobra).
+Na Arte e na Planificada: pinça ou roda do mouse para ampliar, toque duplo alterna 1× ↔ 2,5×, arrastar move; na Arte, passar o dedo muda de face.
+
 ## Rodar
 
 ```bash

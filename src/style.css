@@ -187,6 +187,54 @@ html:has(.acervo){scrollbar-gutter:stable}
 }
 .empty-state{display:grid;place-content:center;height:100dvh;gap:14px;text-align:center}
 
+/* ===== folha recolhida (só a caixa em tela) ===== */
+.sheet{--peek:68px}
+button.grab{display:block;width:calc(100% + 6px);padding:0;border:0;background:none;color:inherit;cursor:grab;touch-action:none}
+button.grab:focus-visible{outline-offset:-4px;border-radius:12px}
+.sheet.in.peek{transform:translateY(calc(100% - var(--peek)));overflow:hidden}
+.sheet.peek .title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:30px;padding-right:150px}
+.sheet.peek .grab{height:26px}
+.peek-bar{display:none;position:absolute;top:8px;right:8px;align-items:center;gap:2px;z-index:2}
+.sheet.peek .peek-bar{display:flex}
+.pill.sm{min-width:0;min-height:40px;padding:0 18px;font-size:14px}
+@media (pointer:coarse){.pill.sm{min-height:44px}}
+.collapse{display:none}
+.peek-tab{position:fixed;z-index:5;right:calc(12px + env(safe-area-inset-right));top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 16px 0 10px;
+  border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(22,22,26,.82);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);color:var(--fg);font:500 14px/1 system-ui,sans-serif}
+.peek-tab .ico-svg{transform:rotate(180deg)}
+@media (min-width:1024px),(orientation:landscape) and (max-height:500px){
+  .sheet.in.peek{transform:translateX(calc(100% + 60px));overflow:hidden auto}
+  .peek-bar{display:none!important}
+  .collapse{display:grid}
+  .sheet.peek .title{white-space:normal;font-size:44px;padding-right:0}
+}
+@media (orientation:landscape) and (max-height:500px){.sheet.peek .title{font-size:30px}}
+
+/* ===== modos: Caixa · Arte · Planificada ===== */
+.modes{position:fixed;z-index:5;top:calc(env(safe-area-inset-top) + 12px);left:50%;transform:translateX(-50%);width:min(calc(100% - 24px),340px);
+  background:rgba(22,22,26,.82);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-color:rgba(255,255,255,.1);
+  opacity:0;pointer-events:none;transition:opacity .3s var(--ease-out)}
+.acervo.open .modes{opacity:1;pointer-events:auto}
+.modes button{padding:0 8px;white-space:nowrap}
+.acervo[data-mode="art"] .pill,.acervo[data-mode="pano"] .pill{display:none}
+.artview{position:fixed;z-index:3;overflow:hidden;animation:fadein .28s var(--ease-out)}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.art-host{position:absolute;inset:0 0 54px;display:grid;place-items:center;overflow:hidden;cursor:zoom-in;overscroll-behavior:contain}
+.art-host.zoomed{cursor:grab}
+.art-wrap{position:relative;flex:none;transform-origin:50% 50%;will-change:transform;border-radius:4px;box-shadow:0 24px 60px -24px rgba(0,0,0,.9);background:#17171b}
+.art-img{display:block;width:100%;height:100%;object-fit:fill;border-radius:inherit;pointer-events:none}
+.art-guides{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:0;transition:opacity .2s}
+.artview.guides .art-guides{opacity:1}
+.art-empty{grid-area:1/1;color:var(--mut);font-size:15px}
+.face-tabs{position:absolute;left:0;right:0;bottom:4px;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:4px 12px;justify-content:safe center;overscroll-behavior-x:contain}
+.face-tabs::-webkit-scrollbar{display:none}
+.face-tabs button,.guides-btn{flex:none;min-height:var(--hit);padding:0 16px;border-radius:999px;border:1px solid var(--line-2);background:rgba(22,22,26,.7);color:var(--fg-2);font:500 14px/1 system-ui,sans-serif}
+.face-tabs button[aria-selected="true"],.guides-btn[aria-pressed="true"]{border-color:var(--fg-2);background:rgba(255,255,255,.1);color:var(--fg)}
+.guides-btn{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);display:none}
+.artview.pano .guides-btn{display:inline-flex;align-items:center}
+.artview.pano .face-tabs,.artview.face .guides-btn{display:none}
+.art-note{position:absolute;left:12px;right:12px;top:4px;text-align:center;color:var(--fg-2);font-size:13px;pointer-events:none}
+
 /* ===== avisos ===== */
 .toasts{position:fixed;z-index:99;left:0;right:0;bottom:calc(20px + env(safe-area-inset-bottom));display:grid;justify-items:center;pointer-events:none;padding:0 16px}
 body:has(.ed) .toasts{bottom:calc(86px + env(safe-area-inset-bottom))}
@@ -405,4 +453,5 @@ dialog.sheet-dlg::backdrop{background:rgba(0,0,0,.6)}
   .toast,.toast.in{transition:opacity .15s!important;transform:none!important}
   .slot:not(.empty)::before{animation:none}
   .sk-b{animation:none}
+  .artview{animation:none}
 }

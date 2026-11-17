@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { Spring } from '../anim';
-import { buildTextures } from '../art';
+import { buildTextures, templateCanvas } from '../art';
 import { buildBox, type BuiltBox } from '../box';
 import { collectionUrl, getOwned, toggleOwned } from '../collection';
 import { listDrops } from '../db';
 import { GL } from '../gl';
-import type { Drop } from '../types';
+import { dielineRects } from '../layout';
+import { FACES, type Drop, type Face } from '../types';
+import { zoomable, type Zoom } from '../zoom';
 import { announce, fmtDate, h, icon, reducedMotion, share, toast, usingKeyboard } from '../ui';
 
 export interface Page { cleanup(): void; sync?(): void }
@@ -16,6 +18,11 @@ interface Slot { drop: Drop; el: HTMLButtonElement; box?: BuiltBox; tex?: Tex; i
 const SHELF_POSE = { rx: 0.1, ry: -0.4 };
 const easeOut = (t: number) => 1 - Math.pow(1 - Math.min(1, t), 3);
 const TAU = Math.PI * 2;
+type Mode = 'box' | 'art' | 'pano';
+const MODES: [Mode, string][] = [['box', 'Caixa'], ['art', 'Arte'], ['pano', 'Planificada']];
+const FACE_SHORT: Record<Face, string> = { front: 'Frente', back: 'Verso', left: 'Esquerda', right: 'Direita', top: 'Topo', bottom: 'Fundo' };
+const FACE_ORDER: Face[] = ['front', 'back', 'left', 'right', 'top', 'bottom'];
+const canvasUrl = (c: HTMLCanvasElement) => new Promise<string>((res) => c.toBlob((b) => res(URL.createObjectURL(b!)), 'image/jpeg', 0.92));
 const FINISH: Record<Drop['finish'], string> = { matte: 'Fosco', satin: 'Acetinado', gloss: 'Brilho (verniz)' };
 /** Número de colunas da prateleira definido no CSS para a tela atual. */
 const colsOf = (el: Element) => Math.max(1, parseInt(getComputedStyle(el).getPropertyValue('--cols')) || 3);
@@ -68,11 +75,17 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   const itemsEl = h('ul', { class: 'items', ariaLabel: 'Dentro da caixa' });
   // ficha técnica: só aparece no painel lateral de telas grandes (o CSS esconde no resto)
   const specsEl = h('dl', { class: 'specs' });
-  const grab = h('i', { class: 'grab', 'aria-hidden': 'true' });
+  const grab = h('button', { class: 'grab', type: 'button', ariaLabel: 'Recolher detalhes', ariaExpanded: 'true', 'data-testid': 'grab' });
+  // faixa que fica visível quando a folha está recolhida (só a caixa na tela)
+  const peekLid = h('button', { class: 'pill sm', type: 'button', ariaLabel: 'Abrir tampa' }, 'Abrir');
+  const peekClose = h('button', { class: 'ico', type: 'button', ariaLabel: 'Fechar' }, icon('close'));
+  const peekBar = h('div', { class: 'peek-bar' }, peekLid, peekClose);
+  const collapseBtn = h('button', { class: 'ico collapse', type: 'button', ariaLabel: 'Recolher detalhes', 'data-tip': 'Recolher', 'data-testid': 'collapse' }, icon('chev'));
+  const peekTab = h('button', { class: 'peek-tab', type: 'button', hidden: true, 'data-testid': 'peek-tab' }, icon('chev'), 'Detalhes');
   const sheet = h('section', { class: 'sheet', 'data-testid': 'sheet', role: 'dialog', 'aria-labelledby': 'sheet-title', tabIndex: -1 },
     grab,
-    h('div', { class: 'acts' }, openBtn, h('span', { class: 'sp' }), isShared ? null : ownBtn, shareBtn, closeBtn),
-    titleEl, metaEl, itemsEl, specsEl);
+    h('div', { class: 'acts' }, openBtn, h('span', { class: 'sp' }), isShared ? null : ownBtn, shareBtn, collapseBtn, closeBtn),
+    titleEl, metaEl, itemsEl, specsEl, peekBar);
   sheet.inert = true;
 
   const shareCol = h('button', { class: 'ico', ariaLabel: 'Compartilhar coleção', 'data-tip': 'Compartilhar coleção', 'data-testid': 'share-collection', onclick: async () => {
@@ -87,8 +100,25 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
       shareCol,
       isShared ? null : h('a', { class: 'ico', href: '/admin', 'data-link': true, ariaLabel: 'Editor', 'data-tip': 'Editor' }, icon('edit'))));
 
+  /* ---------- modos: Caixa · Arte · Planificada ---------- */
+  const modeBtns = MODES.map(([v, l]) => h('button', { type: 'button', role: 'radio', 'data-mode': v, 'data-testid': `mode-${v}`, 'aria-checked': String(v === 'box'), onclick: () => { void setMode(v); } }, l));
+  const modes = h('div', { class: 'modes seg', role: 'radiogroup', ariaLabel: 'Modo de visualização' }, ...modeBtns);
+  modes.inert = true;
+  const artImg = h('img', { class: 'art-img', alt: '', draggable: false });
+  const guidesSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  guidesSvg.setAttribute('class', 'art-guides'); guidesSvg.setAttribute('aria-hidden', 'true'); guidesSvg.setAttribute('preserveAspectRatio', 'none');
+  const artWrap = h('div', { class: 'art-wrap' }, artImg, guidesSvg);
+  const artEmpty = h('p', { class: 'art-empty', hidden: true }, 'Sem arte nesta face.');
+  const artHost = h('div', { class: 'art-host', 'data-testid': 'art-host' }, artWrap, artEmpty);
+  const faceTabs = h('div', { class: 'face-tabs', role: 'tablist', ariaLabel: 'Face da caixa' },
+    ...FACE_ORDER.map((f) => h('button', { type: 'button', role: 'tab', 'data-face': f, 'data-testid': `face-${f}`, onclick: () => { void showFace(f); } }, FACE_SHORT[f])));
+  const guidesBtn = h('button', { class: 'chip guides-btn', type: 'button', ariaPressed: 'false', 'data-testid': 'guides', onclick: () => {
+    const on = !artView.classList.contains('guides'); artView.classList.toggle('guides', on); guidesBtn.ariaPressed = String(on);
+  } }, 'Guias de dobra');
+  const artNote = h('p', { class: 'art-note', hidden: true });
+  const artView = h('div', { class: 'artview', 'data-testid': 'artview', hidden: true }, artHost, faceTabs, guidesBtn, artNote);
   const acervoEl = h('div', { class: 'acervo', 'data-testid': 'acervo' },
-      shelfCanvas, header, rowsEl, veil, heroCanvas, sheet);
+      shelfCanvas, header, rowsEl, veil, heroCanvas, artView, sheet, modes, peekTab);
   if (calm) acervoEl.classList.add('calm');
   root.append(acervoEl);
   groupRows();
@@ -184,6 +214,8 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   const hx = sp(110, 15), hy = sp(110, 15), hs = sp(120, 14);
   const rx = sp(90, 14), ry = sp(70, 11), lid = sp(90, 15);
   let lidOn = false, idleAt = 0, closeAt = 0, sc = 1;
+  let peek = false, mode: Mode = 'box';
+  let heroTexP: Promise<Tex> | null = null;
 
   /** Região livre para a caixa aberta: acima da folha (folha embaixo) ou à esquerda dela (painel lateral). */
   function freeRegion() {
@@ -191,9 +223,12 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     const sa = { t: parseFloat(v.paddingTop) || 0, r: parseFloat(v.paddingRight) || 0, b: parseFloat(v.paddingBottom) || 0, l: parseFloat(v.paddingLeft) || 0 };
     const m = Math.round(Math.max(14, Math.min(40, Math.min(W, H) * 0.04)));
     // offsetLeft/offsetTop ignoram o transform (a folha pode estar entrando/saindo)
-    if (getComputedStyle(sheet).getPropertyValue('--dock').trim() === 'side')
-      return { x0: sa.l + m, y0: sa.t + m, x1: sheet.offsetLeft - m, y1: H - sa.b - m };
-    return { x0: sa.l + m, y0: sa.t + (H > 640 ? 64 : 48), x1: W - sa.r - m, y1: sheet.offsetTop - m };
+    const cs = getComputedStyle(sheet);
+    if (cs.getPropertyValue('--dock').trim() === 'side')
+      return { x0: sa.l + m, y0: sa.t + 64, x1: (peek ? W - sa.r : sheet.offsetLeft) - m, y1: H - sa.b - m };
+    // folha recolhida: só a faixa de 68 px (+ folga) fica por baixo; a caixa usa o resto
+    const bottom = peek ? H - sa.b - (parseFloat(cs.getPropertyValue('--peek')) || 68) - 10 : sheet.offsetTop;
+    return { x0: sa.l + m, y0: sa.t + (H > 640 ? 64 : 48), x1: W - sa.r - m, y1: bottom - m };
   }
   const tmpPos = new THREE.Vector3(), tmpRot = new THREE.Euler(), tmpScale = new THREE.Vector3();
   /** Retângulo na tela da caixa numa pose hipotética (centro em px, escala, giro, tampa). */
@@ -240,7 +275,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     refitRaf = requestAnimationFrame(() => {
       if (!current || !hero) return;
       if (closing) { const p = shelfPx(current); hx.t = p.x; hy.t = p.y; hs.t = k; }
-      else fitHero();
+      else { fitHero(); if (mode !== 'box') placeArt(); }
     });
   };
   B.onResize = refit;
@@ -267,13 +302,146 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     lidOn = on; openBtn.textContent = on ? 'Fechar' : 'Abrir';
     openBtn.ariaLabel = on ? 'Fechar tampa' : 'Abrir tampa';
     openBtn.classList.toggle('on', on);
+    peekLid.textContent = openBtn.textContent; peekLid.ariaLabel = openBtn.ariaLabel;
   }
+
+  /* ---------- folha recolhida: só a caixa em tela ---------- */
+  const docked = () => getComputedStyle(sheet).getPropertyValue('--dock').trim();
+  function setPeek(on: boolean) {
+    if (!current || closing || peek === on) return;
+    peek = on;
+    sheet.classList.toggle('peek', on); acervoEl.classList.toggle('peeked', on);
+    grab.ariaExpanded = String(!on); grab.ariaLabel = on ? 'Mostrar detalhes' : 'Recolher detalhes';
+    // o que está fora da faixa visível não recebe foco nem leitor de tela
+    for (const el of [...sheet.children] as HTMLElement[]) if (el !== grab && el !== peekBar && el !== titleEl) el.inert = on;
+    peekTab.hidden = !(on && docked() === 'side');
+    announce(on ? 'Detalhes recolhidos' : 'Detalhes à mostra');
+    refit();
+    if (!on) setTimeout(() => { if (current === slotNow() && !closing && !peek) sheet.focus({ preventScroll: true }); }, 0);
+  }
+  const slotNow = () => current;
+  grab.onclick = () => { if (!justDragged) setPeek(!peek); };
+  collapseBtn.onclick = () => setPeek(true);
+  peekTab.onclick = () => setPeek(false);
+  peekClose.onclick = () => uiClose();
+  peekLid.onclick = () => toggleLid();
+  let justDragged = false;
+
+  /* ---------- modos Caixa · Arte · Planificada ---------- */
+  let artUrls: string[] = [];
+  let facesSrc: Partial<Record<Face, string>> | null = null, panoSrc: string | null = null;
+  let face: Face = 'front';
+  let zoom: Zoom | null = null;
+  let panoRatio = 1, buildToken = 0;
+  const releaseArt = () => { artUrls.forEach((u) => URL.revokeObjectURL(u)); artUrls = []; facesSrc = null; panoSrc = null; };
+  const own = (u: string) => { artUrls.push(u); return u; };
+
+  /** O quadro da arte ocupa exatamente a região livre (acima da folha / ao lado do painel). */
+  function placeArt() {
+    const R = freeRegion();
+    Object.assign(artView.style, { left: `${R.x0}px`, top: `${R.y0 - 6}px`, width: `${Math.max(80, R.x1 - R.x0)}px`, height: `${Math.max(80, R.y1 - R.y0 + 6)}px` });
+    fitArt();
+  }
+  /** Imagem "contida" no quadro, em px (o SVG das guias acompanha o mesmo retângulo). */
+  function fitArt() {
+    const W = artHost.clientWidth, H = artHost.clientHeight; if (!W || !H) return;
+    const r = mode === 'pano' ? panoRatio : (artImg.naturalWidth && artImg.naturalHeight ? artImg.naturalWidth / artImg.naturalHeight : 1);
+    let w = W, hh = W / r; if (hh > H) { hh = H; w = H * r; }
+    artWrap.style.width = `${Math.round(w)}px`; artWrap.style.height = `${Math.round(hh)}px`;
+  }
+  artImg.addEventListener('load', fitArt);
+
+  async function texSet() { return heroTexP ? await heroTexP : null; }
+  async function facesUrls(): Promise<Partial<Record<Face, string>>> {
+    if (facesSrc) return facesSrc;
+    const t = await texSet(); const out: Partial<Record<Face, string>> = {};
+    if (t) for (const f of FACES) { const c = t[f]?.image as HTMLCanvasElement | undefined; if (c) out[f] = own(await canvasUrl(c)); }
+    return (facesSrc = out);
+  }
+  /** Planificada: a faca como foi enviada; no modo "uma imagem por face", compõe a cruz; sem arte, mostra o gabarito. */
+  async function panoUrl(d: Drop): Promise<{ url: string; note: string }> {
+    if (panoSrc) return { url: panoSrc, note: '' };
+    const { rects, totalW, totalH } = dielineRects(d.w, d.h, d.d);
+    panoRatio = totalW / totalH;
+    if (d.artMode === 'dieline' && d.art.dieline) return { url: (panoSrc = own(URL.createObjectURL(d.art.dieline))), note: '' };
+    const t = await texSet();
+    const has = !!t && FACES.some((f) => t[f]);
+    if (!has) return { url: (panoSrc = own(await canvasUrl(templateCanvas(d.w, d.h, d.d)))), note: 'Sem arte enviada: mostrando o gabarito.' };
+    const k = 2400 / Math.max(totalW, totalH), c = document.createElement('canvas');
+    c.width = Math.round(totalW * k); c.height = Math.round(totalH * k);
+    const g = c.getContext('2d')!; g.fillStyle = '#17171b'; g.fillRect(0, 0, c.width, c.height);
+    for (const f of FACES) { const im = t![f]?.image as HTMLCanvasElement | undefined, r = rects[f]; if (im) g.drawImage(im, r.x * k, r.y * k, r.w * k, r.h * k); }
+    return { url: (panoSrc = own(await canvasUrl(c))), note: '' };
+  }
+  function drawGuides(d: Drop) {
+    const { rects, totalW, totalH } = dielineRects(d.w, d.h, d.d);
+    guidesSvg.setAttribute('viewBox', `0 0 ${totalW} ${totalH}`);
+    guidesSvg.replaceChildren();
+    const ns = 'http://www.w3.org/2000/svg', fs = Math.max(6, Math.min(d.w, d.h, d.d) * 0.16);
+    for (const f of FACES) {
+      const r = rects[f];
+      const rc = document.createElementNS(ns, 'rect');
+      for (const [k, v] of Object.entries({ x: r.x, y: r.y, width: r.w, height: r.h, fill: 'none', stroke: 'rgba(255,255,255,.85)', 'stroke-width': 1.4, 'stroke-dasharray': '5 4', 'vector-effect': 'non-scaling-stroke' })) rc.setAttribute(k, String(v));
+      const tx = document.createElementNS(ns, 'text');
+      for (const [k, v] of Object.entries({ x: r.x + r.w / 2, y: r.y + r.h / 2, 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-size': fs, fill: 'rgba(255,255,255,.9)', 'paint-order': 'stroke', stroke: 'rgba(0,0,0,.55)', 'stroke-width': fs * 0.18 })) tx.setAttribute(k, String(v));
+      tx.textContent = FACE_SHORT[f]; g2(rc, tx);
+    }
+    function g2(...n: Element[]) { guidesSvg.append(...n); }
+  }
+  async function showFace(f: Face) {
+    if (!current) return;
+    face = f; zoom?.reset();
+    faceTabs.querySelectorAll('button').forEach((b) => { const on = b.dataset.face === f; b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1; if (on) b.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'instant' as ScrollBehavior }); });
+    const tok = ++buildToken, src = (await facesUrls())[f];
+    if (tok !== buildToken || mode !== 'art') return;
+    artEmpty.hidden = !!src; artWrap.style.visibility = src ? '' : 'hidden';
+    artImg.alt = `${FACE_SHORT[f]} da caixa ${current.drop.name}`;
+    if (src) artImg.src = src; else artImg.removeAttribute('src');
+    announce(FACE_SHORT[f]);
+  }
+  function stepFace(dir: -1 | 1) {
+    const i = FACE_ORDER.indexOf(face), n = (i + dir + FACE_ORDER.length) % FACE_ORDER.length;
+    void showFace(FACE_ORDER[n]);
+  }
+  async function setMode(m: Mode, instant = false) {
+    if (!current || (closing && !instant) || mode === m) return;
+    const tok = ++buildToken; mode = m;
+    modeBtns.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === m)));
+    acervoEl.dataset.mode = m;
+    const art = m !== 'box';
+    artView.hidden = !art; artView.classList.toggle('pano', m === 'pano'); artView.classList.toggle('face', m === 'art');
+    heroCanvas.style.visibility = art ? 'hidden' : '';
+    zoom?.reset();
+    if (!art) { artNote.hidden = true; if (hero) fitHero(); announce('Caixa em 3D'); return; }
+    placeArt();
+    if (m === 'art') { guidesSvg.replaceChildren(); artNote.hidden = true; await showFace(face); announce('Arte da caixa'); }
+    else {
+      artEmpty.hidden = true; artWrap.style.visibility = '';
+      const d = current.drop, r = await panoUrl(d);
+      if (tok !== buildToken || mode !== 'pano') return;
+      drawGuides(d); artImg.alt = `Planificação da caixa ${d.name}`; artImg.src = r.url;
+      artNote.textContent = r.note; artNote.hidden = !r.note; fitArt(); announce('Planificada');
+    }
+  }
+  /** Volta ao estado inicial (caixa 3D, folha aberta) ao abrir ou fechar uma caixa. */
+  function resetView(dropArt = false) {
+    peek = false; sheet.classList.remove('peek'); acervoEl.classList.remove('peeked'); peekTab.hidden = true;
+    grab.ariaExpanded = 'true'; grab.ariaLabel = 'Recolher detalhes';
+    for (const el of [...sheet.children] as HTMLElement[]) el.inert = false;
+    mode = 'box'; ++buildToken; delete acervoEl.dataset.mode;
+    modeBtns.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === 'box')));
+    artView.hidden = true; heroCanvas.style.visibility = ''; artView.classList.remove('guides', 'pano', 'face'); guidesBtn.ariaPressed = 'false';
+    zoom?.reset(); face = 'front';
+    if (dropArt) { artImg.removeAttribute('src'); releaseArt(); }
+  }
+  zoom = zoomable(artHost, artWrap, { onSwipe: (dir) => { if (mode === 'art') stepFace(dir); } });
 
   function openSlot(s: Slot) {
     if (current || !s.box || !s.tex) return;
     const r0 = s.el.getBoundingClientRect();
     if (r0.top < 40 || r0.bottom > innerHeight - 40) { scrollBy({ top: r0.top - innerHeight / 2 + r0.height / 2, behavior: 'instant' as ScrollBehavior }); placeAll(); A.render(); }
     current = s; closing = false; s.lift.snap(0);
+    resetView();
     document.body.classList.add('locked');
     fillSheet(s.drop);
     hero = buildBox({ ...s.drop, textures: s.tex });
@@ -285,14 +453,15 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     rx.t = 0.1; ry.t = calm ? 0 : -TAU;
     idleAt = performance.now() + 1900;
     veil.classList.add('on'); heroCanvas.classList.add('live'); acervoEl.classList.add('open'); acervoEl.dataset.open = s.drop.slug;
-    header.inert = rowsEl.inert = true; sheet.inert = false;
+    header.inert = rowsEl.inert = true; sheet.inert = false; modes.inert = false;
     setTimeout(() => {
       if (current !== s || closing) return;
       sheet.classList.add('in');
       sheet.focus({ preventScroll: true });
     }, calm ? 0 : 140);
     // textura em alta, trocada quando chegar
-    buildTextures(s.drop, B.renderer.capabilities.getMaxAnisotropy(), 2048).then((t) => {
+    heroTexP = buildTextures(s.drop, B.renderer.capabilities.getMaxAnisotropy(), 2048);
+    heroTexP.then((t) => {
       if (current !== s || !hero) { Object.values(t).forEach((x) => x!.dispose()); return; }
       const nb = buildBox({ ...s.drop, textures: t });
       nb.group.position.copy(hero.group.position); nb.group.rotation.copy(hero.group.rotation); nb.group.scale.copy(hero.group.scale);
@@ -303,7 +472,8 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
 
   function beginClose() {
     if (!current || closing) return;
-    closing = true; sheet.style.transform = ''; sheet.classList.remove('in'); veil.classList.remove('on'); acervoEl.classList.remove('open');
+    closing = true; sheet.style.transform = ''; sheet.classList.remove('in', 'peek'); veil.classList.remove('on'); acervoEl.classList.remove('open');
+    modes.inert = true; peekTab.hidden = true; resetView(true);
     header.inert = rowsEl.inert = false;
     if (sheet.contains(document.activeElement) || document.activeElement === sheet) current.el.focus({ preventScroll: true });
     sheet.inert = true;
@@ -318,7 +488,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     if (heroTex) { Object.values(heroTex).forEach((t) => t!.dispose()); heroTex = null; }
     s.box!.group.visible = true; dirtyA = true;
     heroCanvas.classList.remove('live'); document.body.classList.remove('locked');
-    current = null; closing = false; B.renderer.clear(); delete acervoEl.dataset.open;
+    current = null; closing = false; B.renderer.clear(); delete acervoEl.dataset.open; heroTexP = null;
   }
 
   /* ---------- interações ---------- */
@@ -351,14 +521,17 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
         : i + ({ ArrowLeft: -1, ArrowRight: 1, ArrowUp: -cols, ArrowDown: cols } as Record<string, number>)[e.key];
       if (slots[j]) { slots[j].el.focus(); e.preventDefault(); }
     }
-    else if (current && !closing && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !(e.target as HTMLElement).closest('input,textarea,select')) {
+    else if (current && !closing && mode === 'art' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !(e.target as HTMLElement).closest('input,textarea,select')) {
+      stepFace(e.key === 'ArrowLeft' ? -1 : 1); e.preventDefault();
+    }
+    else if (current && !closing && mode === 'box' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !(e.target as HTMLElement).closest('input,textarea,select')) {
       ry.t += (e.key === 'ArrowLeft' ? -1 : 1) * Math.PI / 4; idleAt = performance.now() + 3500; e.preventDefault();
     }
   };
   addEventListener('keydown', onKey);
 
   const toggleLid = () => {
-    if (!hero || closing) return;
+    if (!hero || closing || mode !== 'box') return;
     setLidUi(!lidOn); lid.t = lidOn ? 1 : 0;
     if (lidOn) { ry.t = Math.round(ry.x / TAU) * TAU; rx.t = 0.08; }
     fitHero(); idleAt = performance.now() + 2500;
@@ -425,13 +598,15 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   };
   heroCanvas.addEventListener('pointerup', endDrag); heroCanvas.addEventListener('pointercancel', endDrag);
 
-  // arrastar a folha para baixo (ou o painel lateral para a direita) fecha — distância ou "peteleco" rápido;
-  // no sentido contrário, resistência elástica. No painel lateral o toque vertical continua rolando o conteúdo.
-  let sd: { x: number; y: number; d: number; t: number; v: number; axis: '' | 'x' | 'y' } | null = null;
-  const docked = () => getComputedStyle(sheet).getPropertyValue('--dock').trim();
+  // A alça (ou qualquer ponto da folha) arrasta: para baixo RECOLHE a folha (só a caixa fica em tela) e, já recolhida,
+  // para baixo de novo fecha; para cima traz a folha de volta. No painel lateral o arrasto para a direita recolhe.
+  // Distância ou "peteleco" rápido; no sentido sem efeito há resistência elástica. O toque vertical no painel lateral continua rolando.
+  let sd: { x: number; y: number; d: number; t: number; v: number; axis: '' | 'x' | 'y'; onGrab: boolean } | null = null;
+  const shift = (d: number, axis: 'x' | 'y') => axis === 'x' ? `translateX(${d}px)` : peek ? `translateY(calc(100% - var(--peek, 68px) + ${d}px))` : `translateY(${d}px)`;
   sheet.addEventListener('pointerdown', (e) => {
-    if ((e.target as HTMLElement).closest('button,a') || !current || closing || e.button > 0) return;
-    sd = { x: e.clientX, y: e.clientY, d: 0, t: performance.now(), v: 0, axis: '' };
+    const btn = (e.target as HTMLElement).closest('button,a');
+    if ((btn && btn !== grab) || !current || closing || e.button > 0) return;
+    sd = { x: e.clientX, y: e.clientY, d: 0, t: performance.now(), v: 0, axis: '', onGrab: btn === grab };
   });
   sheet.addEventListener('pointermove', (e) => {
     if (!sd) return;
@@ -442,14 +617,19 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
       sheet.setPointerCapture(e.pointerId); sheet.classList.add('drag');
     }
     const raw = sd.axis === 'x' ? rx0 : ry0;
-    const d = raw >= 0 ? raw : -Math.sqrt(-raw) * 2.2;
+    const d = peek || raw >= 0 ? raw : -Math.sqrt(-raw) * 2.2;
     sd.v = (d - sd.d) / Math.max(1, now - sd.t); sd.t = now; sd.d = d;
-    sheet.style.transform = sd.axis === 'x' ? `translateX(${d}px)` : `translateY(${d}px)`;
+    sheet.style.transform = shift(d, sd.axis);
   });
   const sheetUp = () => {
-    if (!sd) return;
-    const far = !!sd.axis && (sd.d > 80 || (sd.d > 20 && sd.v > 0.6)); sd = null; sheet.classList.remove('drag');
-    if (far) uiClose(); else sheet.style.transform = '';
+    const g = sd; sd = null; sheet.classList.remove('drag');
+    if (!g) return;
+    sheet.style.transform = '';
+    if (!g.axis) { if (peek && !g.onGrab) setPeek(false); return; }   // toque na faixa recolhida: abre (a alça tem o próprio clique)
+    justDragged = true; setTimeout(() => { justDragged = false; }, 50);
+    const down = g.d > 60 || (g.d > 20 && g.v > 0.6);
+    if (peek) { if (g.d < -40 || g.v < -0.5) setPeek(false); else if (down) uiClose(); }
+    else if (down) setPeek(true);
   };
   sheet.addEventListener('pointerup', sheetUp); sheet.addEventListener('pointercancel', sheetUp);
 
@@ -466,7 +646,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
       const pw = B.toWorld(hx.x, hy.x);
       hero.group.position.set(pw.x, pw.y, 0); hero.group.scale.setScalar(hs.x);
       hero.group.rotation.set(rx.x, ry.x, 0); hero.setOpen(lid.x);
-      B.render();
+      if (mode === 'box' || closing) B.render();
       if (closing && ((hx.done && hy.done && hs.done && ry.done && rx.done) || now - closeAt > 1100)) finishClose();
     }
     for (const s of slots) {

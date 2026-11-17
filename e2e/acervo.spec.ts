@@ -1,4 +1,4 @@
-import { test, expect, openAcervo, openBox, expectClosed, slot, sheet, acervo, isTouch } from './helpers';
+import { test, expect, openAcervo, openBox, expectClosed, expectHitSize, slot, sheet, acervo, isTouch } from './helpers';
 
 test.describe('Acervo — funções @flow', () => {
   test('mostra as 6 caixas e o contador zerado', async ({ page, errors }) => {
@@ -51,16 +51,120 @@ test.describe('Acervo — funções @flow', () => {
     void errors;
   });
 
-  test('arrastar a folha para baixo fecha', async ({ page, errors }) => {
+  /** Alça (celular/tablet em pé) ou botão de recolher (painel lateral): o que existir na tela. */
+  const toggler = async (page: import('@playwright/test').Page) => {
+    const g = page.getByTestId('grab');
+    return (await g.isVisible()) ? g : page.getByTestId('collapse');
+  };
+
+  test('a alça recolhe a folha (só a caixa em tela) e traz de volta', async ({ page, errors }) => {
     await openAcervo(page);
     await openBox(page, 'vigilia');
-    const b = (await sheet(page).getByRole('heading').boundingBox())!;
-    await page.mouse.move(b.x + b.width / 2, b.y + 4);
-    await page.mouse.down();
-    await page.mouse.move(b.x + b.width / 2, b.y + 60, { steps: 5 });
-    await page.mouse.move(b.x + b.width / 2, b.y + 180, { steps: 5 });
-    await page.mouse.up();
+    const vp = page.viewportSize()!;
+    await (await toggler(page)).click();
+    await expect(sheet(page)).toHaveClass(/peek/);
+    await expect(acervo(page)).toHaveClass(/peeked/);
+    await expect(acervo(page)).toHaveAttribute('data-open', 'vigilia');
+    await page.waitForTimeout(900);
+    const bar = await page.getByTestId('peek-tab').isVisible();
+    if (bar) {
+      // painel lateral: sai da tela e sobra um botão "Detalhes"
+      await expect(sheet(page)).not.toBeInViewport();
+    } else {
+      // folha de baixo: só a faixa (alça + nome) fica visível
+      await expect.poll(async () => vp.height - (await sheet(page).boundingBox())!.y, { message: 'faixa recolhida ≤ 100 px', timeout: 8000 }).toBeLessThanOrEqual(100);
+      const strip = sheet(page).locator('.peek-bar');                              // a faixa tem o próprio "Abrir" e fechar
+      await expect(strip.getByRole('button', { name: 'Abrir tampa' })).toBeVisible();
+      await strip.getByRole('button', { name: 'Abrir tampa' }).click();
+      await expect(strip.getByRole('button', { name: 'Fechar tampa' })).toBeVisible();
+    }
+    await (bar ? page.getByTestId('peek-tab') : page.getByTestId('grab')).click();
+    await expect(sheet(page)).not.toHaveClass(/peek/);
+    await expect(sheet(page)).toBeInViewport({ ratio: 0.95 });
+    void errors;
+  });
+
+  test('arrastar a folha para baixo recolhe; arrastar de novo (faixa) fecha', async ({ page, errors }) => {
+    await openAcervo(page);
+    await openBox(page, 'vigilia');
+    const drag = async (dy: number) => {
+      const b = (await sheet(page).getByRole('heading').boundingBox())!;
+      await page.mouse.move(b.x + b.width / 2, b.y + 4);
+      await page.mouse.down();
+      await page.mouse.move(b.x + b.width / 2, b.y + 4 + dy / 3, { steps: 5 });
+      await page.mouse.move(b.x + b.width / 2, b.y + 4 + dy, { steps: 5 });
+      await page.mouse.up();
+    };
+    await drag(180);
+    await expect(sheet(page)).toHaveClass(/peek/);
+    await expect(acervo(page)).toHaveAttribute('data-open', 'vigilia');
+    if (await page.getByTestId('peek-tab').isVisible()) { await page.keyboard.press('Escape'); }
+    else await drag(120);
     await expectClosed(page);
+    void errors;
+  });
+
+  test('modos Caixa · Arte · Planificada', async ({ page, errors }) => {
+    await openAcervo(page);
+    await openBox(page, 'mutacoes');
+    const vp = page.viewportSize()!;
+    await expectHitSize(page, page.locator('.modes button'), 'modos');
+    await expect(page.getByTestId('mode-box')).toHaveAttribute('aria-checked', 'true');
+    // ---- Arte: só a arte, por face
+    await page.getByTestId('mode-art').click();
+    const view = page.getByTestId('artview');
+    await expect(view).toBeVisible();
+    const img = view.locator('.art-img');
+    await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0), { timeout: 20_000 }).toBe(true);
+    await expect(page.getByTestId('face-front')).toHaveAttribute('aria-selected', 'true');
+    const src1 = await img.getAttribute('src');
+    await page.getByTestId('face-back').click();
+    await expect(page.getByTestId('face-back')).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(() => img.getAttribute('src')).not.toBe(src1);
+    await expect(page.getByTestId('lid')).toBeHidden();                       // "Abrir tampa" não faz sentido aqui
+    // a arte fica dentro da tela e não invade a folha
+    const v = (await view.boundingBox())!, s = (await sheet(page).boundingBox())!;
+    expect(v.x).toBeGreaterThanOrEqual(-1); expect(v.y).toBeGreaterThanOrEqual(0);
+    expect(v.x + v.width).toBeLessThanOrEqual(vp.width + 1); expect(v.y + v.height).toBeLessThanOrEqual(vp.height + 1);
+    expect(v.y + v.height <= s.y + 2 || v.x + v.width <= s.x + 2, 'arte não fica por baixo da folha').toBe(true);
+    // zoom: toque duplo amplia e volta; roda do mouse amplia
+    const host = page.getByTestId('art-host'), hb = (await host.boundingBox())!;
+    const wrap = view.locator('.art-wrap');
+    const scale = async () => wrap.evaluate((el) => { const m = /scale\(([\d.]+)\)/.exec((el as HTMLElement).style.transform); return m ? +m[1] : 1; });
+    await page.mouse.dblclick(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await expect.poll(scale).toBeGreaterThan(2);
+    await page.mouse.dblclick(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await expect.poll(scale).toBe(1);
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await page.mouse.wheel(0, -400);
+    await expect.poll(scale).toBeGreaterThan(1.2);
+    // ---- Planificada: a faca inteira, com guias de dobra
+    await page.getByTestId('mode-pano').click();
+    await expect(view).toHaveClass(/pano/);
+    await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0), { timeout: 20_000 }).toBe(true);
+    await expect(view.locator('.art-guides rect')).toHaveCount(6);
+    await expect(page.getByTestId('guides')).toHaveAttribute('aria-pressed', 'false');
+    await page.getByTestId('guides').click();
+    await expect(view).toHaveClass(/guides/);
+    await expect(page.getByTestId('guides')).toHaveAttribute('aria-pressed', 'true');
+    // ---- voltar à caixa 3D
+    await page.getByTestId('mode-box').click();
+    await expect(view).toBeHidden();
+    await expect(page.getByTestId('lid')).toBeVisible();
+    void errors;
+  });
+
+  test('Esc fecha estando em Arte, e a próxima caixa abre em 3D', async ({ page, errors }) => {
+    await openAcervo(page);
+    await openBox(page, 'ensaio');
+    await page.getByTestId('mode-art').click();
+    await expect(page.getByTestId('artview')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expectClosed(page);
+    await openBox(page, 'circuito');
+    await expect(page.getByTestId('mode-box')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByTestId('artview')).toBeHidden();
+    await expect(sheet(page)).not.toHaveClass(/peek/);
     void errors;
   });
 

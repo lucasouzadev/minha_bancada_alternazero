@@ -85,6 +85,7 @@ const ICONS: Record<string, string> = {
   copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/>',
   list: '<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  chev: '<path d="M9 5l7 7-7 7"/>',
 };
 export function icon(name: keyof typeof ICONS | string, size = 22) {
   const s = document.createElement('span'); s.className = 'ico-svg'; s.setAttribute('aria-hidden', 'true');

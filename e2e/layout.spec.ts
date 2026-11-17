@@ -37,6 +37,11 @@ test.describe('Layout @layout', () => {
     const free = Math.max(s.y * vp.width, s.x * vp.height, (vp.width - s.x - s.width) * vp.height);
     expect.soft(free / (vp.width * vp.height), 'área livre para a caixa ≥ 35% da tela').toBeGreaterThanOrEqual(0.35);
     await expectHitSize(page, sheet(page).getByRole('button'), 'folha');
+    await expectHitSize(page, page.locator('.modes button'), 'modos');
+    const mb = (await page.locator('.modes').boundingBox())!;
+    expect.soft(mb.x, 'modos dentro da tela').toBeGreaterThanOrEqual(0);
+    expect.soft(mb.x + mb.width, 'modos dentro da tela').toBeLessThanOrEqual(vp.width);
+    expect.soft(mb.y + mb.height <= s.y || mb.x + mb.width <= s.x || mb.x >= s.x + s.width, 'modos não cobrem a folha').toBe(true);
     await expectReadableText(page, 'folha');
     await expectNoHorizontalScroll(page, 'folha aberta');
     await shot(page, 'caixa-aberta');
