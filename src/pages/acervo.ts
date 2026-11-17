@@ -244,6 +244,9 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   function fitHero() {
     if (!hero || !current || closing) return;
     const R = freeRegion();
+    // a barra de modos fica centrada na área livre (ao lado do painel lateral, não por cima dele)
+    const half = Math.min(340, B.W - 24) / 2;
+    modes.style.left = `${Math.max(half + 12, Math.min((R.x0 + R.x1) / 2, B.W - half - 12))}px`;
     const rw = Math.max(40, R.x1 - R.x0), rh = Math.max(40, R.y1 - R.y0);
     const gx = (R.x0 + R.x1) / 2, gy = (R.y0 + R.y1) / 2;
     const maxW = Math.min(rw * (lidOn ? 0.96 : 0.84), 1100), maxH = Math.min(rh * (lidOn ? 0.92 : 0.84), 860);
