@@ -112,12 +112,13 @@ html:has(.acervo){scrollbar-gutter:stable}
 /* ===== folha / painel de detalhes =====
    --dock diz ao JS onde a folha está (bottom | side) para a caixa ocupar o espaço livre. */
 .sheet{--dock:bottom;position:fixed;z-index:4;left:0;right:0;margin:0 auto;bottom:calc(10px + env(safe-area-inset-bottom));width:calc(100% - 20px);max-width:540px;
-  max-height:calc(100dvh - 120px - env(safe-area-inset-top));overflow:hidden auto;overscroll-behavior:contain;
+  max-height:min(calc(100dvh - 120px - env(safe-area-inset-top)),56dvh);overflow:hidden auto;overscroll-behavior:contain;
   display:flex;flex-direction:column;
   background:rgba(22,22,26,.82);backdrop-filter:blur(30px) saturate(1.4);-webkit-backdrop-filter:blur(30px) saturate(1.4);
   border:1px solid rgba(255,255,255,.08);border-radius:var(--r-lg);padding:6px 16px 14px 22px;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 24px 60px -12px rgba(0,0,0,.7);
-  transform:translateY(calc(100% + 40px));transition:transform .3s var(--ease-in);touch-action:none;cursor:grab}
+  transform:translateY(calc(100% + 40px));transition:transform .3s var(--ease-in);touch-action:pan-y;cursor:grab}
+.sheet.peek{touch-action:none}
 .sheet:focus{outline:none}
 .sheet.in{transform:none;transition:transform .62s var(--ease-spring)}
 .sheet.drag{transition:none;cursor:grabbing;user-select:none}
@@ -132,7 +133,8 @@ html:has(.acervo){scrollbar-gutter:stable}
 @media (hover:hover){.sheet:hover .grab::before{background:rgba(255,255,255,.32)}}
 .sheet.drag .grab::before{background:rgba(255,255,255,.45)}
 /* ações embaixo, na zona do polegar (folha inferior e painel lateral em toque) */
-.acts{display:flex;align-items:center;gap:2px;order:9;margin-top:18px;padding-top:2px}.sp{flex:1}
+.acts{display:flex;align-items:center;gap:2px;order:9;margin:10px 0 -14px;padding:8px 0 14px;position:sticky;bottom:0;z-index:2;
+  background:linear-gradient(rgba(22,22,26,0),rgba(22,22,26,.97) 12px)}.sp{flex:1}
 /* dobrável aberto / tablet em pé: cartão flutuante centralizado */
 @media (min-width:600px){
   .sheet{max-width:560px;width:calc(100% - 48px);bottom:calc(24px + env(safe-area-inset-bottom));padding:6px 20px 18px 28px}
@@ -149,16 +151,18 @@ html:has(.acervo){scrollbar-gutter:stable}
 }
 @media (min-width:1024px) and (min-height:501px){
   /* teclado/mouse: barra de ações no topo, como um painel de detalhes */
-  .sheet .acts{order:0;margin:0 0 26px;padding:0 0 18px;border-bottom:1px solid rgba(255,255,255,.07)}
+  .sheet .acts{order:0;margin:0 0 26px;padding:0 0 18px;border-bottom:1px solid rgba(255,255,255,.07);position:static;background:none}
   .sheet.in>:nth-child(2){animation-delay:.04s}
   /* toque (tablet deitado): ações no pé do painel */
-  @media (pointer:coarse){.sheet .acts{order:9;margin:auto 0 0;padding:18px 0 0;border-bottom:0;border-top:1px solid rgba(255,255,255,.07)}}
+  @media (pointer:coarse){.sheet .acts{order:9;margin:auto 0 0;padding:18px 0 0;border-bottom:0;border-top:1px solid rgba(255,255,255,.07);position:static;background:none}}
 }
 @media (orientation:landscape) and (max-height:500px){
   .sheet{--m:10px;width:min(44vw,400px);padding:16px 12px 10px 22px}
   .sheet .title{font-size:30px}
-  .sheet .acts{margin-top:auto;padding-top:14px}
+  /* altura curta: a ficha pode rolar, então as ações ficam no topo do painel (sempre à mão) */
+  .sheet .acts{order:0;margin:0 0 12px;padding:0 0 10px;border-bottom:1px solid rgba(255,255,255,.07);position:static;background:none}
   .sheet .items{gap:4px 14px;flex-direction:row}
+  .sec{margin-top:12px;padding-top:12px}
 }
 .pill{min-width:104px;min-height:44px;border:0;background:var(--acc);color:#fff;font:600 15px/1 system-ui,sans-serif;letter-spacing:.01em;padding:0 24px;border-radius:999px;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.14);transition:background-color .18s,transform .2s var(--ease-out),box-shadow .2s}
@@ -176,15 +180,21 @@ html:has(.acervo){scrollbar-gutter:stable}
 .title{font:700 40px/.95 var(--display);text-transform:uppercase;letter-spacing:.01em;text-wrap:balance}
 .meta{display:flex;flex-wrap:wrap;gap:0 8px;color:var(--mut);margin-top:8px;font-size:14px;font-variant-numeric:tabular-nums}
 .meta>span+span::before{content:"·";margin-right:8px;color:var(--mut-2)}
-.items{list-style:none;padding:14px 0 0;margin:14px 6px 0 0;border-top:1px solid rgba(255,255,255,.07);display:flex;flex-wrap:wrap;gap:4px 14px;font-size:15px;color:var(--fg-2)}
+.sec{margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.07)}
+.sec[hidden]{display:none}
+.sec>.eyebrow{margin-bottom:10px}
+.items{list-style:none;padding:0;margin:0 6px 0 0;display:flex;flex-wrap:wrap;gap:4px 14px;font-size:15px;color:var(--fg-2)}
 .items li{position:relative;padding-left:12px}
 .items li::before{content:"";position:absolute;left:0;top:.62em;width:4px;height:4px;border-radius:50%;background:var(--mut-2)}
-.items[hidden]{display:none}
-.specs{display:none}
-@media (min-width:1024px) and (min-height:501px){
-  .specs{display:grid;grid-template-columns:auto 1fr;gap:10px 18px;margin:22px 0 0;padding-top:18px;border-top:1px solid rgba(255,255,255,.07);font-size:14px}
-  .specs dt{color:var(--mut)}.specs dd{margin:0;color:var(--fg-2);text-transform:none}
-}
+/* ficha técnica: pares rótulo/valor em duas colunas (tags e cores ocupam a linha inteira) */
+.specs{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;margin:0;font-size:14px}
+.spec{min-width:0}.spec.wide{grid-column:1/-1}
+.specs dt{color:var(--mut);font-size:12px;letter-spacing:.04em;margin-bottom:3px}
+.specs dd{margin:0;color:var(--fg);text-transform:none;overflow-wrap:anywhere}
+.sw-row{display:flex;gap:8px;align-items:center;min-height:21px}
+.sw{display:block;width:18px;height:18px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(255,255,255,.22);flex:none}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tag{padding:5px 11px;border-radius:999px;border:1px solid var(--line-2);color:var(--fg-2);font-size:13px;line-height:1.1}
 .empty-state{display:grid;place-content:center;height:100dvh;gap:14px;text-align:center}
 
 /* ===== folha recolhida (só a caixa em tela) ===== */

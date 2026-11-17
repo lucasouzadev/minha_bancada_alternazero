@@ -19,6 +19,28 @@ test.describe('Acervo — funções @flow', () => {
     void errors;
   });
 
+  test('a folha é uma ficha: data em cima, medidas e demais dados na ficha técnica', async ({ page, errors }) => {
+    await openAcervo(page);
+    await openBox(page, 'mutacoes');
+    const sh = sheet(page);
+    // linha da data sem as medidas
+    await expect(sh.locator('.meta')).toContainText('2026');
+    await expect(sh.locator('.meta')).not.toContainText('mm');
+    // ficha técnica com medidas, abertura, acabamento, cores e tags
+    const ficha = sh.getByLabel('Ficha técnica');
+    await expect(ficha).toContainText('Medidas');
+    await expect(ficha).toContainText('200 × 300 × 60 mm');
+    await expect(ficha).toContainText('Livro (capa lateral)');
+    await expect(ficha).toContainText('Acetinado');
+    await expect(ficha.getByRole('img')).toHaveCount(2);                 // as duas cores
+    for (const t of ['horror', 'anime', 'corpo']) await expect(ficha.locator('.tag', { hasText: t })).toBeVisible({ timeout: 2000 }).catch(async () => { await ficha.locator('.tag', { hasText: t }).scrollIntoViewIfNeeded(); await expect(ficha.locator('.tag', { hasText: t })).toBeVisible(); });
+    await expect(sh.getByLabel('Dentro da caixa').first()).toBeAttached();
+    // mesmo com a ficha rolando por dentro, as ações continuam à vista
+    await expect(sh.getByRole('button', { name: 'Fechar', exact: true })).toBeInViewport();
+    await expect(sh.getByRole('button', { name: 'Compartilhar', exact: true })).toBeInViewport();
+    void errors;
+  });
+
   test('botão Abrir alterna a tampa', async ({ page, errors }) => {
     await openAcervo(page);
     await openBox(page, 'ensaio');

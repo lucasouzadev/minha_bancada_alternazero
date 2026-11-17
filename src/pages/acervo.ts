@@ -73,8 +73,10 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   const titleEl = h('h2', { class: 'title', id: 'sheet-title' });
   const metaEl = h('p', { class: 'meta' });
   const itemsEl = h('ul', { class: 'items', ariaLabel: 'Dentro da caixa' });
+  const itemsBox = h('section', { class: 'sec' }, h('p', { class: 'eyebrow' }, 'Dentro da caixa'), itemsEl);
   // ficha técnica: só aparece no painel lateral de telas grandes (o CSS esconde no resto)
   const specsEl = h('dl', { class: 'specs' });
+  const fichaEl = h('section', { class: 'sec ficha', ariaLabel: 'Ficha técnica' }, h('p', { class: 'eyebrow' }, 'Ficha técnica'), specsEl);
   const grab = h('button', { class: 'grab', type: 'button', ariaLabel: 'Recolher detalhes', ariaExpanded: 'true', 'data-testid': 'grab' });
   // faixa que fica visível quando a folha está recolhida (só a caixa na tela)
   const peekLid = h('button', { class: 'pill sm', type: 'button', ariaLabel: 'Abrir tampa' }, 'Abrir');
@@ -85,7 +87,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   const sheet = h('section', { class: 'sheet', 'data-testid': 'sheet', role: 'dialog', 'aria-labelledby': 'sheet-title', tabIndex: -1 },
     grab,
     h('div', { class: 'acts' }, openBtn, h('span', { class: 'sp' }), isShared ? null : ownBtn, shareBtn, collapseBtn, closeBtn),
-    titleEl, metaEl, itemsEl, specsEl, peekBar);
+    titleEl, metaEl, itemsBox, fichaEl, peekBar);
   sheet.inert = true;
 
   const shareCol = h('button', { class: 'ico', ariaLabel: 'Compartilhar coleção', 'data-tip': 'Compartilhar coleção', 'data-testid': 'share-collection', onclick: async () => {
@@ -284,16 +286,23 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   B.onResize = refit;
   const sheetRO = new ResizeObserver(refit); sheetRO.observe(sheet);
 
+  /** A folha é uma ficha: título e data em cima; "dentro da caixa" e a ficha técnica (medidas, abertura, acabamento…) embaixo. */
   function fillSheet(d: Drop) {
     titleEl.textContent = d.name;
-    metaEl.replaceChildren(...[d.subtitle, fmtDate(d.date)].filter(Boolean).flatMap((t) => [h('span', {}, t)]),
-      h('span', { class: 'dims' }, `${d.w} × ${d.h} × ${d.d} mm`));
+    metaEl.replaceChildren(...[d.subtitle, fmtDate(d.date)].filter(Boolean).map((t) => h('span', {}, t)));
     itemsEl.replaceChildren(...d.items.map((it) => h('li', {}, it)));
-    itemsEl.hidden = !d.items.length;
-    const spec: [string, string][] = [
-      ['Artista', d.artist], ['Acabamento', FINISH[d.finish]], ['Abertura', d.openMode === 'book' ? 'Livro (capa lateral)' : 'Tampa no topo'],
-      ['Medidas', `${d.w} × ${d.h} × ${d.d} mm`], ['Tags', d.tags.join(', ')]];
-    specsEl.replaceChildren(...spec.filter(([, v]) => v).flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]));
+    itemsBox.hidden = !d.items.length;
+    const dot = (hex: string, label: string) => h('i', { class: 'sw', style: `background:${hex}`, title: `${label} ${hex}`, role: 'img', 'aria-label': `${label} ${hex}` });
+    const cell = (k: string, v: Node | string | null, wide = false) => v ? h('div', { class: `spec${wide ? ' wide' : ''}` }, h('dt', {}, k), h('dd', {}, v)) : null;
+    const cells = [
+      cell('Medidas', `${d.w} × ${d.h} × ${d.d} mm`),
+      cell('Abertura', d.openMode === 'book' ? 'Livro (capa lateral)' : 'Tampa no topo'),
+      cell('Acabamento', FINISH[d.finish]),
+      cell('Cores', h('span', { class: 'sw-row' }, dot(d.inner, 'Interior'), dot(d.tissue, 'Papel de seda'))),
+      cell('Artista', d.artist || null, true),
+      cell('Tags', d.tags.length ? h('span', { class: 'tags' }, ...d.tags.map((t) => h('span', { class: 'tag' }, t))) : null, true),
+    ];
+    specsEl.replaceChildren(...cells.filter((c): c is HTMLDivElement => !!c));
     setOwnUi(owned.has(d.slug));
     setLidUi(false);
   }
