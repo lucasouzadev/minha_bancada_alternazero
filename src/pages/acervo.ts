@@ -16,16 +16,20 @@ interface Slot { drop: Drop; el: HTMLButtonElement; box?: BuiltBox; tex?: Tex; i
 const SHELF_POSE = { rx: 0.1, ry: -0.4 };
 const easeOut = (t: number) => 1 - Math.pow(1 - Math.min(1, t), 3);
 const TAU = Math.PI * 2;
+const FINISH: Record<Drop['finish'], string> = { matte: 'Fosco', satin: 'Acetinado', gloss: 'Brilho (verniz)' };
+/** Número de colunas da prateleira definido no CSS para a tela atual. */
+const colsOf = (el: Element) => Math.max(1, parseInt(getComputedStyle(el).getPropertyValue('--cols')) || 3);
 
 export async function acervoPage(root: HTMLElement): Promise<Page> {
   const q = new URLSearchParams(location.search).get('c');
   const isShared = q !== null;
   const owned: Set<string> = isShared ? new Set(q!.split(',').filter(Boolean)) : getOwned();
   // casca imediata (cabeçalho + esqueletos) enquanto a lista de drops chega
+  const shellRows = h('div', { class: 'rows' });
   const shell = h('div', { class: 'acervo', 'aria-busy': 'true' },
-    h('header', { class: 'top' }, h('div', { class: 'brand' }, h('h1', {}, isShared ? 'Coleção' : 'Acervo')), h('i', { class: 'ico' })),
-    h('div', { class: 'rows' }, ...[0, 1].map(() => h('div', { class: 'row' }, ...[0, 1, 2].map(() => h('div', { class: 'slot' }))))));
+    h('header', { class: 'top' }, h('div', { class: 'brand' }, h('h1', {}, isShared ? 'Coleção' : 'Acervo')), h('i', { class: 'ico' })), shellRows);
   root.append(shell);
+  { const c = colsOf(shell); const n = c >= 6 ? c : c * 2; for (let i = 0; i < n; i += c) shellRows.append(h('div', { class: 'row' }, ...Array.from({ length: c }, () => h('div', { class: 'slot' })))); }
   const drops = (await listDrops()).filter((d) => d.published);
   shell.remove();
 
@@ -37,16 +41,22 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   const count = h('span', { class: 'count', 'data-testid': 'count' });
   const rowsEl = h('main', { class: 'rows', ariaLabel: isShared ? 'Coleção' : 'Prateleira de caixas' });
 
-  const slots: Slot[] = [];
-  for (let i = 0; i < Math.max(3, Math.ceil(drops.length / 3) * 3); i += 3) {
-    const row = h('div', { class: 'row' });
-    for (let j = i; j < i + 3; j++) {
-      const d = drops[j];
-      if (!d) { row.append(h('div', { class: 'slot empty', 'aria-hidden': 'true' })); continue; }
-      const el = h('button', { class: 'slot', ariaLabel: d.name, ariaBusy: 'true', 'data-testid': 'slot', 'data-slug': d.slug });
-      row.append(el); slots.push({ drop: d, el, lift: new Spring(0, 260, 22) });
-    }
-    rowsEl.append(row);
+  const slots: Slot[] = drops.map((d) => ({
+    drop: d, lift: new Spring(0, 260, 22),
+    el: h('button', { class: 'slot', ariaLabel: d.name, ariaBusy: 'true', 'data-testid': 'slot', 'data-slug': d.slug, 'data-tip': d.name }),
+  }));
+  /** Colunas vêm do CSS (--cols por classe de tela); cada fileira é uma tábua. Reagrupa só quando muda. */
+  let cols = 0;
+  function groupRows() {
+    const c = Math.max(1, Math.min(colsOf(acervoEl), slots.length || 1));
+    if (c === cols) return;
+    cols = c;
+    const focused = slots.find((s) => s.el === document.activeElement);
+    rowsEl.style.setProperty('--c', String(c));
+    rowsEl.querySelectorAll('.row').forEach((r) => r.remove());
+    const n = Math.max(1, Math.ceil(slots.length / c));
+    for (let i = 0; i < n; i++) rowsEl.append(h('div', { class: 'row' }, ...slots.slice(i * c, i * c + c).map((s) => s.el)));
+    focused?.el.focus({ preventScroll: true });
   }
 
   const ownBtn = h('button', { class: 'ico', ariaLabel: 'Tenho esta caixa', ariaPressed: 'false', 'data-tip': 'Tenho esta caixa' }, icon('mark'));
@@ -56,11 +66,13 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   const titleEl = h('h2', { class: 'title', id: 'sheet-title' });
   const metaEl = h('p', { class: 'meta' });
   const itemsEl = h('ul', { class: 'items', ariaLabel: 'Dentro da caixa' });
+  // ficha técnica: só aparece no painel lateral de telas grandes (o CSS esconde no resto)
+  const specsEl = h('dl', { class: 'specs' });
   const grab = h('i', { class: 'grab', 'aria-hidden': 'true' });
   const sheet = h('section', { class: 'sheet', 'data-testid': 'sheet', role: 'dialog', 'aria-labelledby': 'sheet-title', tabIndex: -1 },
     grab,
     h('div', { class: 'acts' }, openBtn, h('span', { class: 'sp' }), isShared ? null : ownBtn, shareBtn, closeBtn),
-    titleEl, metaEl, itemsEl);
+    titleEl, metaEl, itemsEl, specsEl);
   sheet.inert = true;
 
   const shareCol = h('button', { class: 'ico', ariaLabel: 'Compartilhar coleção', 'data-tip': 'Compartilhar coleção', 'data-testid': 'share-collection', onclick: async () => {
@@ -79,6 +91,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
       shelfCanvas, header, rowsEl, veil, heroCanvas, sheet);
   if (calm) acervoEl.classList.add('calm');
   root.append(acervoEl);
+  groupRows();
 
   const countOwned = () => drops.filter((d) => owned.has(d.slug)).length;
   const renderCount = () => {
@@ -149,7 +162,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     s.box!.group.rotation.set(SHELF_POSE.rx, SHELF_POSE.ry + l * 0.22, 0);
   }
   const introScale = (s: Slot) => (s.intro === undefined ? 1 : 0.94 + 0.06 * easeOut(s.intro));
-  A.onResize = placeAll;
+  A.onResize = () => { groupRows(); placeAll(); };
   const onScroll = () => placeAll();
   addEventListener('scroll', onScroll, { passive: true });
 
@@ -172,19 +185,66 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   const rx = sp(90, 14), ry = sp(70, 11), lid = sp(90, 15);
   let lidOn = false, idleAt = 0, closeAt = 0, sc = 1;
 
-  function endPose(drop: Drop) {
-    const sz = hero!.size;
-    const top = 72, bottom = B.H - sheet.offsetHeight - (parseFloat(getComputedStyle(sheet).bottom) || 10) - 6;
-    sc = Math.min(((bottom - top) * 0.78) / (sz.y * B.ppc), (B.W * 0.6) / (sz.x * B.ppc));
-    void drop;
-    return { x: B.W / 2, y: (top + bottom) / 2 };
+  /** Região livre para a caixa aberta: acima da folha (folha embaixo) ou à esquerda dela (painel lateral). */
+  function freeRegion() {
+    const W = B.W, H = B.H, v = getComputedStyle(veil);
+    const sa = { t: parseFloat(v.paddingTop) || 0, r: parseFloat(v.paddingRight) || 0, b: parseFloat(v.paddingBottom) || 0, l: parseFloat(v.paddingLeft) || 0 };
+    const m = Math.round(Math.max(14, Math.min(40, Math.min(W, H) * 0.04)));
+    // offsetLeft/offsetTop ignoram o transform (a folha pode estar entrando/saindo)
+    if (getComputedStyle(sheet).getPropertyValue('--dock').trim() === 'side')
+      return { x0: sa.l + m, y0: sa.t + m, x1: sheet.offsetLeft - m, y1: H - sa.b - m };
+    return { x0: sa.l + m, y0: sa.t + (H > 640 ? 64 : 48), x1: W - sa.r - m, y1: sheet.offsetTop - m };
   }
-  function lidScale() {
-    if (!lidOn) return sc;
-    const sz = hero!.size, f = hero!.frameSize;
-    const maxW = (B.W * 0.94) / (f.x * B.ppc), maxH = ((B.H - sheet.offsetHeight - 120) * 0.92) / (f.y * B.ppc);
-    return Math.min(sc, maxW, maxH, (B.W * 0.9) / (sz.x * B.ppc));
+  const tmpPos = new THREE.Vector3(), tmpRot = new THREE.Euler(), tmpScale = new THREE.Vector3();
+  /** Retângulo na tela da caixa numa pose hipotética (centro em px, escala, giro, tampa). */
+  function rectAt(cx: number, cy: number, s: number, rxv: number, ryv: number, open: number) {
+    const g = hero!.group, w = B.toWorld(cx, cy);
+    g.position.set(w.x, w.y, 0); g.scale.setScalar(s); g.rotation.set(rxv, ryv, 0); hero!.setOpen(open);
+    return heroRect(0);
   }
+  /**
+   * Alvo da caixa aberta: cabe na região livre com margem (perspectiva incluída, medindo a projeção real),
+   * centralizada nela. Tampa fechada: mede vários ângulos do giro; tampa aberta: a pose de frente.
+   */
+  function fitHero() {
+    if (!hero || !current || closing) return;
+    const R = freeRegion();
+    const rw = Math.max(40, R.x1 - R.x0), rh = Math.max(40, R.y1 - R.y0);
+    const gx = (R.x0 + R.x1) / 2, gy = (R.y0 + R.y1) / 2;
+    const maxW = Math.min(rw * (lidOn ? 0.96 : 0.84), 1100), maxH = Math.min(rh * (lidOn ? 0.92 : 0.84), 860);
+    const angles = lidOn ? [0] : [0, 0.4, 0.8, 1.2, Math.PI / 2];
+    const rxv = lidOn ? 0.08 : 0.1, open = lidOn ? 1 : 0;
+    const g = hero.group;
+    B.camera.updateMatrixWorld(); // a projeção abaixo não pode depender de já ter havido um render
+    tmpPos.copy(g.position); tmpRot.copy(g.rotation); tmpScale.copy(g.scale);
+    let s = sc > 0 ? sc : k, cx = gx, cy = gy;
+    for (let i = 0; i < 5; i++) {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const a of angles) {
+        const r = rectAt(cx, cy, s, rxv, a, open);
+        x0 = Math.min(x0, r.x0); y0 = Math.min(y0, r.y0); x1 = Math.max(x1, r.x1); y1 = Math.max(y1, r.y1);
+      }
+      const f = Math.min(maxW / (x1 - x0), maxH / (y1 - y0));
+      // o desvio do retângulo em relação ao pivô escala junto com a caixa
+      const ox = (x0 + x1) / 2 - cx, oy = (y0 + y1) / 2 - cy;
+      s *= f; cx = gx - ox * f; cy = gy - oy * f;
+    }
+    g.position.copy(tmpPos); g.rotation.copy(tmpRot); g.scale.copy(tmpScale); hero.setOpen(lid.x);
+    if (!lidOn) sc = s;
+    hx.t = cx; hy.t = cy; hs.t = s;
+  }
+  // mudou o tamanho da tela/folha com a caixa aberta: reposiciona (nada fica fora da tela)
+  let refitRaf = 0;
+  const refit = () => {
+    cancelAnimationFrame(refitRaf);
+    refitRaf = requestAnimationFrame(() => {
+      if (!current || !hero) return;
+      if (closing) { const p = shelfPx(current); hx.t = p.x; hy.t = p.y; hs.t = k; }
+      else fitHero();
+    });
+  };
+  B.onResize = refit;
+  const sheetRO = new ResizeObserver(refit); sheetRO.observe(sheet);
 
   function fillSheet(d: Drop) {
     titleEl.textContent = d.name;
@@ -192,6 +252,10 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
       h('span', { class: 'dims' }, `${d.w} × ${d.h} × ${d.d} mm`));
     itemsEl.replaceChildren(...d.items.map((it) => h('li', {}, it)));
     itemsEl.hidden = !d.items.length;
+    const spec: [string, string][] = [
+      ['Artista', d.artist], ['Acabamento', FINISH[d.finish]], ['Abertura', d.openMode === 'book' ? 'Livro (capa lateral)' : 'Tampa no topo'],
+      ['Medidas', `${d.w} × ${d.h} × ${d.d} mm`], ['Tags', d.tags.join(', ')]];
+    specsEl.replaceChildren(...spec.filter(([, v]) => v).flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]));
     setOwnUi(owned.has(d.slug));
     setLidUi(false);
   }
@@ -217,8 +281,8 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     const p0 = shelfPx(s);
     hx.snap(p0.x); hy.snap(p0.y); hs.snap(k); rx.snap(SHELF_POSE.rx); ry.snap(SHELF_POSE.ry); lid.snap(0);
     s.box.group.visible = false; A.render();
-    const e = endPose(s.drop);
-    hx.t = e.x; hy.t = e.y; hs.t = sc; rx.t = 0.1; ry.t = calm ? 0 : -TAU;
+    sc = 0; fitHero();
+    rx.t = 0.1; ry.t = calm ? 0 : -TAU;
     idleAt = performance.now() + 1900;
     veil.classList.add('on'); heroCanvas.classList.add('live'); acervoEl.classList.add('open'); acervoEl.dataset.open = s.drop.slug;
     header.inert = rowsEl.inert = true; sheet.inert = false;
@@ -279,6 +343,14 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape') uiClose();
     // setas giram a caixa aberta (teclado)
+    else if (!current && /^(Arrow(Left|Right|Up|Down)|Home|End)$/.test(e.key)) {
+      // setas navegam entre as caixas da prateleira (grade de --c colunas)
+      const i = slots.findIndex((s) => s.el === document.activeElement);
+      if (i < 0) return;
+      const j = e.key === 'Home' ? 0 : e.key === 'End' ? slots.length - 1
+        : i + ({ ArrowLeft: -1, ArrowRight: 1, ArrowUp: -cols, ArrowDown: cols } as Record<string, number>)[e.key];
+      if (slots[j]) { slots[j].el.focus(); e.preventDefault(); }
+    }
     else if (current && !closing && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !(e.target as HTMLElement).closest('input,textarea,select')) {
       ry.t += (e.key === 'ArrowLeft' ? -1 : 1) * Math.PI / 4; idleAt = performance.now() + 3500; e.preventDefault();
     }
@@ -289,7 +361,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     if (!hero || closing) return;
     setLidUi(!lidOn); lid.t = lidOn ? 1 : 0;
     if (lidOn) { ry.t = Math.round(ry.x / TAU) * TAU; rx.t = 0.08; }
-    hs.t = lidScale(); idleAt = performance.now() + 2500;
+    fitHero(); idleAt = performance.now() + 2500;
   };
   openBtn.onclick = toggleLid;
 
@@ -353,22 +425,30 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   };
   heroCanvas.addEventListener('pointerup', endDrag); heroCanvas.addEventListener('pointercancel', endDrag);
 
-  // arrastar a folha para baixo fecha (distância ou "peteleco" rápido); para cima, resistência elástica
-  let sd: { y: number; dy: number; t: number; v: number } | null = null;
+  // arrastar a folha para baixo (ou o painel lateral para a direita) fecha — distância ou "peteleco" rápido;
+  // no sentido contrário, resistência elástica. No painel lateral o toque vertical continua rolando o conteúdo.
+  let sd: { x: number; y: number; d: number; t: number; v: number; axis: '' | 'x' | 'y' } | null = null;
+  const docked = () => getComputedStyle(sheet).getPropertyValue('--dock').trim();
   sheet.addEventListener('pointerdown', (e) => {
-    if ((e.target as HTMLElement).closest('button,a') || !current || closing) return;
-    sd = { y: e.clientY, dy: 0, t: performance.now(), v: 0 }; sheet.setPointerCapture(e.pointerId); sheet.classList.add('drag');
+    if ((e.target as HTMLElement).closest('button,a') || !current || closing || e.button > 0) return;
+    sd = { x: e.clientX, y: e.clientY, d: 0, t: performance.now(), v: 0, axis: '' };
   });
   sheet.addEventListener('pointermove', (e) => {
     if (!sd) return;
-    const raw = e.clientY - sd.y, now = performance.now();
-    const dy = raw >= 0 ? raw : -Math.sqrt(-raw) * 2.2;
-    sd.v = (dy - sd.dy) / Math.max(1, now - sd.t); sd.t = now; sd.dy = dy;
-    sheet.style.transform = `translateY(${dy}px)`;
+    const rx0 = e.clientX - sd.x, ry0 = e.clientY - sd.y, now = performance.now();
+    if (!sd.axis) {
+      if (Math.hypot(rx0, ry0) < 6) return;
+      sd.axis = docked() === 'side' && Math.abs(rx0) > Math.abs(ry0) ? 'x' : 'y';
+      sheet.setPointerCapture(e.pointerId); sheet.classList.add('drag');
+    }
+    const raw = sd.axis === 'x' ? rx0 : ry0;
+    const d = raw >= 0 ? raw : -Math.sqrt(-raw) * 2.2;
+    sd.v = (d - sd.d) / Math.max(1, now - sd.t); sd.t = now; sd.d = d;
+    sheet.style.transform = sd.axis === 'x' ? `translateX(${d}px)` : `translateY(${d}px)`;
   });
   const sheetUp = () => {
     if (!sd) return;
-    const far = sd.dy > 80 || (sd.dy > 20 && sd.v > 0.6); sd = null; sheet.classList.remove('drag');
+    const far = !!sd.axis && (sd.d > 80 || (sd.d > 20 && sd.v > 0.6)); sd = null; sheet.classList.remove('drag');
     if (far) uiClose(); else sheet.style.transform = '';
   };
   sheet.addEventListener('pointerup', sheetUp); sheet.addEventListener('pointercancel', sheetUp);
@@ -417,7 +497,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   return {
     sync,
     cleanup() {
-      cancelAnimationFrame(raf); removeEventListener('scroll', onScroll); removeEventListener('keydown', onKey);
+      cancelAnimationFrame(raf); cancelAnimationFrame(refitRaf); sheetRO.disconnect(); removeEventListener('scroll', onScroll); removeEventListener('keydown', onKey);
       document.body.classList.remove('locked'); A.dispose(); B.dispose();
     },
   };

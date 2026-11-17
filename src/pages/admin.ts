@@ -207,9 +207,16 @@ export async function adminPage(root: HTMLElement, id?: string) {
     target = target ? 0 : 1; lidBtn.textContent = target ? 'Fechar tampa' : 'Abrir tampa'; lidBtn.ariaPressed = String(!!target);
   } }, 'Abrir tampa');
 
+  // celular: prévia compacta por padrão; o botão amplia/reduz (o CSS esconde o botão quando há espaço)
+  const grow = h('button', { class: 'ghost grow', type: 'button', ariaLabel: 'Ampliar prévia', ariaExpanded: 'false', onclick: () => {
+    const big = adminEl.classList.toggle('big');
+    grow.ariaExpanded = String(big); grow.ariaLabel = big ? 'Reduzir prévia' : 'Ampliar prévia';
+    grow.replaceChildren(icon(big ? 'shrink' : 'expand', 20));
+  } }, icon('expand', 20));
+
   const sect = (title: string, ...kids: (HTMLElement | null | false)[]) => h('section', { class: 'sect' }, h('h3', { class: 'eyebrow' }, title), ...kids);
 
-  root.append(h('div', { class: 'admin' },
+  const adminEl = h('div', { class: 'admin' },
     h('aside', { class: 'panel' },
       h('div', { class: 'panel-top' },
         h('a', { class: 'ghost sm', href: '/', 'data-link': true }, icon('back', 18), 'Acervo'),
@@ -237,7 +244,8 @@ export async function adminPage(root: HTMLElement, id?: string) {
         saveBtn,
         !isNew && h('a', { class: 'ghost', href: `/c/${drop.slug}?preview`, 'data-link': true }, 'Ver página'),
         !isNew && h('button', { class: 'danger', type: 'button', onclick: async () => { if (confirm(`Excluir "${drop.name}"? Isso não pode ser desfeito.`)) { await deleteDrop(drop.id); toast('Drop excluído'); go('/admin'); } } }, icon('trash', 18), 'Excluir'))),
-    h('div', { class: 'preview' }, previewHost, h('div', { class: 'stage-bar' }, lidBtn))));
+    h('div', { class: 'preview', 'data-testid': 'preview' }, previewHost, h('div', { class: 'stage-bar' }, lidBtn, grow)));
+  root.append(adminEl);
 
   refresh();
   return () => {
