@@ -72,7 +72,7 @@ test.describe('Acervo — funções @flow', () => {
     await expect(sh).toContainText('Você pode correr, mas não pode se esconder.');
     await expect(sh).toContainText('Especial de Halloween');
     const link = sh.getByTestId('store-link');
-    await sh.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await sh.locator('.sh-body').evaluate((el) => { el.scrollTop = el.scrollHeight; });
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute('href', 'https://www.alternazero.com/lancamentos/drop-mutacoes/');
     await expect(link).toHaveAttribute('target', '_blank');
@@ -120,10 +120,7 @@ test.describe('Acervo — funções @flow', () => {
   });
 
   /** Alça (celular/tablet em pé) ou botão de recolher (painel lateral): o que existir na tela. */
-  const toggler = async (page: import('@playwright/test').Page) => {
-    const g = page.getByTestId('grab');
-    return (await g.isVisible()) ? g : page.getByTestId('collapse');
-  };
+  const toggler = async (page: import('@playwright/test').Page) => page.getByTestId('grab');
 
   test('a alça recolhe a folha (só a caixa em tela) e traz de volta', async ({ page, errors }) => {
     await openAcervo(page);
@@ -140,8 +137,11 @@ test.describe('Acervo — funções @flow', () => {
       await expect(sheet(page)).not.toBeInViewport();
     } else {
       // folha de baixo: só a faixa (alça + nome) fica visível
-      await expect.poll(async () => vp.height - (await sheet(page).boundingBox())!.y, { message: 'faixa recolhida ≤ 100 px', timeout: 8000 }).toBeLessThanOrEqual(100);
-      const strip = sheet(page).locator('.peek-bar');                              // a faixa tem o próprio "Abrir" e fechar
+      // recolhida: só o cabeçalho (nome, Abrir, recolher/fechar e modos) fica à vista
+      const headH = (await sheet(page).locator('.sh-head').boundingBox())!.height;
+      await expect.poll(async () => vp.height - (await sheet(page).boundingBox())!.y, { message: 'só o cabeçalho visível', timeout: 8000 }).toBeLessThanOrEqual(headH + 2);
+      expect(headH, 'cabeçalho recolhido compacto (≤ 24% da tela)').toBeLessThanOrEqual(vp.height * 0.24);
+      const strip = sheet(page).locator('.sh-head');
       await expect(strip.getByRole('button', { name: 'Abrir tampa' })).toBeVisible();
       await strip.getByRole('button', { name: 'Abrir tampa' }).click();
       await expect(strip.getByRole('button', { name: 'Fechar tampa' })).toBeVisible();
@@ -233,6 +233,63 @@ test.describe('Acervo — funções @flow', () => {
     await expect(page.getByTestId('mode-box')).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByTestId('artview')).toBeHidden();
     await expect(sheet(page)).not.toHaveClass(/peek/);
+    void errors;
+  });
+
+  test('folha: cabeçalho e rodapé fixos enquanto o corpo rola; rodapé sem vão', async ({ page, errors }) => {
+    await openAcervo(page);
+    await openBox(page, 'mutacoes');
+    const sh = sheet(page), vp = page.viewportSize()!;
+    // abre no começo da ficha (a frase é o primeiro bloco)
+    await expect(sh.getByText('Você pode correr, mas não pode se esconder.')).toBeInViewport();
+    const body = sh.locator('.sh-body');
+    await body.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await page.waitForTimeout(500);
+    await expect(sh.getByRole('heading')).toBeInViewport();                       // título continua à vista
+    await expect(page.getByTestId('grab')).toBeInViewport();                       // recolher continua à vista
+    await expect(sh.getByRole('button', { name: 'Fechar', exact: true })).toBeInViewport();
+    await expect(page.getByTestId('lid')).toBeInViewport();                        // ações do rodapé à vista
+    const b = (await body.boundingBox())!, f = (await sh.locator('.sh-foot').boundingBox())!, s = (await sh.boundingBox())!;
+    expect(b.y + b.height, 'corpo termina onde o rodapé começa').toBeLessThanOrEqual(f.y + 1);
+    expect(Math.abs((f.y + f.height) - (s.y + s.height)), 'rodapé encosta no fim da folha').toBeLessThanOrEqual(1);
+    if (await sh.evaluate((el) => getComputedStyle(el).getPropertyValue('--dock').trim() === 'bottom'))
+      expect(Math.abs(s.y + s.height - vp.height), 'folha presa à borda de baixo').toBeLessThanOrEqual(1);
+    // sem barra de rolagem visível
+    expect(await body.evaluate((el) => el.offsetWidth - el.clientWidth)).toBe(0);
+    void errors;
+  });
+
+  test('Arte: folha recolhe sozinha, toque na arte = tela cheia, ações centralizadas sem o "Abrir"', async ({ page, errors }) => {
+    await openAcervo(page);
+    await openBox(page, 'mutacoes');
+    await page.getByTestId('mode-art').click();
+    const docked = await sheet(page).evaluate((el) => getComputedStyle(el).getPropertyValue('--dock').trim());
+    if (docked === 'bottom') await expect(sheet(page)).toHaveClass(/peek/);
+    // ações sem o "Abrir" ficam centralizadas no rodapé
+    if (docked === 'side') {
+      const foot = (await sheet(page).locator('.sh-foot').boundingBox())!;
+      const btns = await sheet(page).locator('.sh-foot button:visible').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON()));
+      const mid = (Math.min(...btns.map((r) => r.left)) + Math.max(...btns.map((r) => r.right))) / 2;
+      expect(Math.abs(mid - (foot.x + foot.width / 2)), 'ações centralizadas').toBeLessThanOrEqual(12);
+    }
+    // um toque na arte esconde folha e controles; outro traz de volta
+    const host = page.getByTestId('art-host');
+    await expect.poll(() => host.evaluate((el) => (el.querySelector('img') as HTMLImageElement).naturalWidth > 0), { timeout: 20_000 }).toBe(true);
+    const hb = (await host.boundingBox())!;
+    await page.mouse.click(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await expect(acervo(page)).toHaveClass(/immersive/);
+    await expect(sheet(page)).not.toBeInViewport();
+    await expect(page.locator('.face-tabs')).toHaveCSS('opacity', '0');
+    const full = (await host.boundingBox())!;
+    expect(full.height, 'a arte ganha a tela').toBeGreaterThan(hb.height);
+    await page.mouse.click(full.x + full.width / 2, full.y + full.height / 2);
+    await expect(acervo(page)).not.toHaveClass(/immersive/);
+    // planificada: nomes das faces nas guias com pelo menos 12 px
+    await page.getByTestId('mode-pano').click();
+    await page.getByTestId('guides').click();
+    const sizes = await page.locator('.art-labels span').evaluateAll((els) => els.map((e) => parseFloat(getComputedStyle(e).fontSize)));
+    expect(sizes.length).toBe(6);
+    for (const f of sizes) expect(f).toBeGreaterThanOrEqual(12);
     void errors;
   });
 

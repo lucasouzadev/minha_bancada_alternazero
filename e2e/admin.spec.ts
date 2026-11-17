@@ -9,7 +9,7 @@ const openMore = async (page: Page) => { await page.locator('details.more:visibl
 async function toPublish(page: Page, nome: string) {
   await name(page).fill(nome);
   await next(page); await next(page); await next(page);
-  await expect(page.getByRole('heading', { name: 'Quase lá' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'A ficha' })).toBeVisible();
 }
 const menuAction = async (page: Page, label: string | RegExp) => {
   await page.getByTestId('menu').click();
@@ -34,10 +34,13 @@ test.describe('Editor — funções @flow', () => {
     await next(page);
     await page.getByLabel('Dentro da caixa').fill('Camiseta\nAdesivo');
     await page.getByLabel(/publicado/i).check();
-    await expect(page.getByText('180 × 260 × 70 mm')).toBeVisible();
     await page.getByRole('button', { name: 'Salvar' }).click();
     await expect(page).toHaveURL(/\/admin\/[0-9a-f-]{36}$/, { timeout: 30_000 });
     await expect(page.getByRole('heading', { name: /editar drop/i })).toBeVisible();
+    // tela "Pronto": o que acabou de subir
+    await expect(page.getByText('No ar no acervo', { exact: true })).toBeVisible();
+    await expect(page.locator('.done-step')).toContainText('180 × 260 × 70 mm');
+    await expect(page.locator('.done-step')).toContainText('/c/teste-e2e');
     const id = page.url().split('/').pop()!;
 
     await openAcervo(page, '/', 7);
@@ -296,10 +299,9 @@ test.describe('Editor — funções @flow', () => {
   test('frase, conceito, status, link da loja e sugestões de tags chegam à ficha', async ({ page, errors }) => {
     await page.goto('/admin');
     await name(page).fill('Ficha Completa');
-    await openMore(page);
+    await stepTab(page, 3);
     await page.getByLabel('Frase de destaque').fill('Nada se esconde.');
     await page.getByLabel('Conceito').fill('Um drop de teste com conceito.');
-    await stepTab(page, 3);
     // sugestões: as já usadas nos outros drops e os temas da marca; um toque adiciona
     await page.getByLabel('Tags').fill('ocu');
     await page.getByRole('button', { name: '+ ocultismo' }).click();
@@ -321,7 +323,7 @@ test.describe('Editor — funções @flow', () => {
     await expect(sh).toContainText('Um drop de teste com conceito.');
     await expect(sh.locator('.badge')).toHaveText('Esgotado');
     await expect(sh.getByLabel('Ficha técnica').locator('.tag')).toHaveText(['ocultismo', 'halloween']);
-    await sh.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await sh.locator('.sh-body').evaluate((el) => { el.scrollTop = el.scrollHeight; });
     await expect(sh.getByTestId('store-link')).toHaveAttribute('href', 'https://www.alternazero.com/lancamentos/drop-teste/');
     void errors;
   });
@@ -355,6 +357,66 @@ test.describe('Editor — funções @flow', () => {
     await page.getByLabel('Link da loja').fill('https://www.alternazero.com/');
     await page.getByRole('button', { name: 'Salvar' }).click();
     await expect(page).toHaveURL(/\/admin\/[0-9a-f-]{36}$/, { timeout: 30_000 });
+    void errors;
+  });
+
+  test('Pronto: rascunho oferece "Publicar agora"; publicado leva ao acervo; "Editar" volta aos passos', async ({ page, errors }) => {
+    await page.goto('/admin');
+    await toPublish(page, 'Pronto E2E');
+    await page.getByRole('button', { name: 'Salvar' }).click();
+    await expect(page.getByText('Salvo como rascunho', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('.ed-stage')).toBeVisible();                        // a caixa como ficou
+    await page.getByTestId('publish-now').click();
+    await expect(page.getByText('No ar no acervo', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('edit-again').click();
+    await expect(page.getByRole('heading', { name: 'Como se chama?' })).toBeVisible();
+    await expect(name(page)).toHaveValue('Pronto E2E');
+    await page.getByTestId('step-3').click();
+    await page.getByRole('button', { name: 'Salvar' }).click();
+    await page.getByTestId('see').click();
+    await expect(page).toHaveURL(/\/c\/pronto-e2e/);
+    await expect(page.getByTestId('acervo')).toHaveAttribute('data-open', 'pronto-e2e', { timeout: 60_000 });
+    void errors;
+  });
+
+  test('menus em folha: alça, título e "Excluir" sem estilo de botão de pílula', async ({ page, errors }) => {
+    await page.goto('/admin');
+    await toPublish(page, 'Menu E2E');
+    await page.getByRole('button', { name: 'Salvar' }).click();
+    await expect(page.getByText('Salvo como rascunho', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('menu').click();
+    const d = page.getByRole('dialog');
+    await expect(d.locator('.sh-handle')).toBeVisible();
+    await expect(d.locator('.dlg-title')).toHaveText('Ações');
+    const del = d.getByRole('button', { name: /excluir/i });
+    expect(await del.evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe('0px');
+    expect(await del.evaluate((el) => getComputedStyle(el).justifyContent)).not.toBe('center');
+    // folha presa à borda de baixo
+    const vp = page.viewportSize()!;
+    await expect.poll(async () => { const b = (await d.boundingBox())!; return Math.abs(b.y + b.height - vp.height); }).toBeLessThanOrEqual(1);
+    await page.keyboard.press('Escape');
+    void errors;
+  });
+
+  test('sugestões de tags aparecem também com o campo já preenchido', async ({ page, errors }) => {
+    await page.goto('/admin');
+    await name(page).fill('Tags Cheias');
+    await stepTab(page, 3);
+    await page.getByLabel('Tags').fill('Anime, Terror, Horror');
+    await page.getByLabel('Frase de destaque').focus();                           // sai do campo
+    await expect(page.getByRole('button', { name: '+ halloween' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '+ horror' })).toHaveCount(0);   // já está nas tags
+    void errors;
+  });
+
+  test('campo de data não invade o vizinho; "Mais opções" só com o secundário', async ({ page, errors }) => {
+    await page.goto('/admin');
+    await expect(page.getByLabel('Subtítulo')).toBeVisible();
+    await expect(page.getByLabel('Lançamento')).toBeVisible();
+    const date = (await page.getByLabel('Lançamento').boundingBox())!, scroll = (await page.locator('.ed-scroll').boundingBox())!;
+    expect(date.x + date.width).toBeLessThanOrEqual(scroll.x + scroll.width);
+    await expect(page.getByLabel('Link (slug)')).toBeHidden();
+    await expect(page.getByLabel('Artista')).toBeHidden();
     void errors;
   });
 });

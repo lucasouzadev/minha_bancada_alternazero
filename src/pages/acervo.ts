@@ -87,17 +87,21 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   } }, 'Ler mais');
   const aboutBox = h('section', { class: 'sec', hidden: true, ariaLabel: 'Sobre o drop' }, h('p', { class: 'eyebrow' }, 'Sobre'), conceptEl, conceptMore);
   const storeLink = h('a', { class: 'ghost store-link', target: '_blank', rel: 'noopener noreferrer', hidden: true, 'data-testid': 'store-link' }, icon('external', 18), 'Ver na loja');
-  const grab = h('button', { class: 'grab', type: 'button', ariaLabel: 'Recolher detalhes', ariaExpanded: 'true', 'data-testid': 'grab' });
-  // faixa que fica visível quando a folha está recolhida (só a caixa na tela)
+  // alternar recolhida/aberta: um botão acessível; o cabeçalho inteiro também arrasta
+  const grab = h('button', { class: 'ico sh-toggle', type: 'button', ariaLabel: 'Recolher detalhes', ariaExpanded: 'true', 'data-testid': 'grab', 'data-tip': 'Recolher' }, icon('chev'));
+  // "Abrir" compacto, só com a folha recolhida (no modo Caixa)
   const peekLid = h('button', { class: 'pill sm', type: 'button', ariaLabel: 'Abrir tampa' }, 'Abrir');
-  const peekClose = h('button', { class: 'ico', type: 'button', ariaLabel: 'Fechar' }, icon('close'));
-  const peekBar = h('div', { class: 'peek-bar' }, peekLid, peekClose);
-  const collapseBtn = h('button', { class: 'ico collapse', type: 'button', ariaLabel: 'Recolher detalhes', 'data-tip': 'Recolher', 'data-testid': 'collapse' }, icon('chev'));
   const peekTab = h('button', { class: 'peek-tab', type: 'button', hidden: true, 'data-testid': 'peek-tab' }, icon('chev'), 'Detalhes');
-  const sheet = h('section', { class: 'sheet', 'data-testid': 'sheet', role: 'dialog', 'aria-labelledby': 'sheet-title', tabIndex: -1 },
-    grab,
-    h('div', { class: 'acts' }, openBtn, h('span', { class: 'sp' }), isShared ? null : ownBtn, shareBtn, collapseBtn, closeBtn),
-    titleEl, metaEl, taglineEl, aboutBox, itemsBox, fichaEl, storeLink, peekBar);
+  /* ---------- modos: Caixa · Arte · Planificada (no cabeçalho da folha) ---------- */
+  const modeBtns = MODES.map(([v, l]) => h('button', { type: 'button', role: 'radio', 'data-mode': v, 'data-testid': `mode-${v}`, 'aria-checked': String(v === 'box'), onclick: () => { void setMode(v); } }, l));
+  const modes = h('div', { class: 'modes seg', role: 'radiogroup', ariaLabel: 'Modo de visualização' }, ...modeBtns);
+  const head = h('div', { class: 'sh-head' },
+    h('span', { class: 'sh-handle', 'aria-hidden': 'true' }),
+    h('div', { class: 'sh-row' }, h('div', { class: 'sh-tt' }, titleEl, metaEl), h('div', { class: 'sh-acts' }, peekLid, grab, closeBtn)),
+    modes);
+  const body = h('div', { class: 'sh-body' }, taglineEl, aboutBox, itemsBox, fichaEl, storeLink);
+  const foot = h('div', { class: 'sh-foot' }, openBtn, h('span', { class: 'sp' }), isShared ? null : ownBtn, shareBtn);
+  const sheet = h('section', { class: 'sheet', 'data-testid': 'sheet', role: 'dialog', 'aria-labelledby': 'sheet-title', tabIndex: -1 }, head, body, foot);
   sheet.inert = true;
 
   const shareCol = h('button', { class: 'ico', ariaLabel: 'Compartilhar coleção', 'data-tip': 'Compartilhar coleção', 'data-testid': 'share-collection', onclick: async () => {
@@ -112,14 +116,11 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
       shareCol,
       isShared ? null : h('a', { class: 'ico', href: '/admin', 'data-link': true, ariaLabel: 'Editor', 'data-tip': 'Editor' }, icon('edit'))));
 
-  /* ---------- modos: Caixa · Arte · Planificada ---------- */
-  const modeBtns = MODES.map(([v, l]) => h('button', { type: 'button', role: 'radio', 'data-mode': v, 'data-testid': `mode-${v}`, 'aria-checked': String(v === 'box'), onclick: () => { void setMode(v); } }, l));
-  const modes = h('div', { class: 'modes seg', role: 'radiogroup', ariaLabel: 'Modo de visualização' }, ...modeBtns);
-  modes.inert = true;
   const artImg = h('img', { class: 'art-img', alt: '', draggable: false });
   const guidesSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   guidesSvg.setAttribute('class', 'art-guides'); guidesSvg.setAttribute('aria-hidden', 'true'); guidesSvg.setAttribute('preserveAspectRatio', 'none');
-  const artWrap = h('div', { class: 'art-wrap' }, artImg, guidesSvg);
+  const artLabels = h('div', { class: 'art-labels', 'aria-hidden': 'true' });
+  const artWrap = h('div', { class: 'art-wrap' }, artImg, guidesSvg, artLabels);
   const artEmpty = h('p', { class: 'art-empty', hidden: true }, 'Sem arte nesta face.');
   const artHost = h('div', { class: 'art-host', 'data-testid': 'art-host' }, artWrap, artEmpty);
   const faceTabs = h('div', { class: 'face-tabs', role: 'tablist', ariaLabel: 'Face da caixa' },
@@ -136,7 +137,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   const tagBtns = ['', ...tagList].map((t) => h('button', { class: 'chip', type: 'button', 'data-tag': t, 'data-testid': t ? 'tag-chip' : 'tag-all', 'aria-pressed': String(t === ''), onclick: () => applyTag(t) }, t || 'Todas'));
   const tagbar = h('nav', { class: 'tagbar', ariaLabel: 'Filtrar por tag', 'data-testid': 'tagbar', hidden: tagList.length === 0 }, ...tagBtns);
   const acervoEl = h('div', { class: 'acervo', 'data-testid': 'acervo' },
-      shelfCanvas, header, tagbar, rowsEl, veil, heroCanvas, artView, sheet, modes, peekTab);
+      shelfCanvas, header, tagbar, rowsEl, veil, heroCanvas, artView, sheet, peekTab);
   if (calm) acervoEl.classList.add('calm');
   root.append(acervoEl);
   groupRows();
@@ -242,13 +243,11 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     const W = B.W, H = B.H, v = getComputedStyle(veil);
     const sa = { t: parseFloat(v.paddingTop) || 0, r: parseFloat(v.paddingRight) || 0, b: parseFloat(v.paddingBottom) || 0, l: parseFloat(v.paddingLeft) || 0 };
     const m = Math.round(Math.max(14, Math.min(40, Math.min(W, H) * 0.04)));
-    // offsetLeft/offsetTop ignoram o transform (a folha pode estar entrando/saindo)
-    const cs = getComputedStyle(sheet);
-    if (cs.getPropertyValue('--dock').trim() === 'side')
-      return { x0: sa.l + m, y0: sa.t + 64, x1: (peek ? W - sa.r : sheet.offsetLeft) - m, y1: H - sa.b - m };
-    // folha recolhida: só a faixa de 68 px (+ folga) fica por baixo; a caixa usa o resto
-    const bottom = peek ? H - sa.b - (parseFloat(cs.getPropertyValue('--peek')) || 68) - 10 : sheet.offsetTop;
-    return { x0: sa.l + m, y0: sa.t + (H > 640 ? 64 : 48), x1: W - sa.r - m, y1: bottom - m };
+    const imm = acervoEl.classList.contains('immersive');
+    if (docked() === 'side')
+      return { x0: sa.l + m, y0: sa.t + m, x1: (peek || imm ? W - sa.r : sheet.offsetLeft) - m, y1: H - sa.b - m };
+    const bottom = imm ? H - sa.b : peek ? H - head.offsetHeight - sa.b : sheet.offsetTop;
+    return { x0: sa.l + m, y0: sa.t + m, x1: W - sa.r - m, y1: bottom - m };
   }
   const tmpPos = new THREE.Vector3(), tmpRot = new THREE.Euler(), tmpScale = new THREE.Vector3();
   /** Retângulo na tela da caixa numa pose hipotética (centro em px, escala, giro, tampa). */
@@ -264,9 +263,6 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   function fitHero() {
     if (!hero || !current || closing) return;
     const R = freeRegion();
-    // a barra de modos fica centrada na área livre (ao lado do painel lateral, não por cima dele)
-    const half = Math.min(340, B.W - 24) / 2;
-    modes.style.left = `${Math.max(half + 12, Math.min((R.x0 + R.x1) / 2, B.W - half - 12))}px`;
     const rw = Math.max(40, R.x1 - R.x0), rh = Math.max(40, R.y1 - R.y0);
     const gx = (R.x0 + R.x1) / 2, gy = (R.y0 + R.y1) / 2;
     const maxW = Math.min(rw * (lidOn ? 0.96 : 0.84), 1100), maxH = Math.min(rh * (lidOn ? 0.92 : 0.84), 860);
@@ -302,11 +298,13 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     });
   };
   B.onResize = refit;
-  const sheetRO = new ResizeObserver(refit); sheetRO.observe(sheet);
+  const safeB = () => parseFloat(getComputedStyle(veil).paddingBottom) || 0;
+  const sheetRO = new ResizeObserver(() => { sheet.style.setProperty('--peek', `${head.offsetHeight + safeB()}px`); refit(); });
+  sheetRO.observe(sheet); sheetRO.observe(head);
 
   /** A folha é uma ficha: título e data em cima; "dentro da caixa" e a ficha técnica (medidas, abertura, acabamento…) embaixo. */
   function fillSheet(d: Drop) {
-    sheet.scrollTop = 0;   // a ficha anterior pode ter ficado rolada
+    body.scrollTop = 0;   // a ficha anterior pode ter ficado rolada
     titleEl.textContent = d.name;
     metaEl.replaceChildren(...[d.subtitle, fmtDate(d.date)].filter(Boolean).map((t) => h('span', {}, t)),
       ...(d.status === 'soldout' || d.status === 'soon' ? [h('span', { class: `badge ${d.status}` }, STATUS_LABEL[d.status])] : []));
@@ -363,7 +361,8 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     sheet.classList.toggle('peek', on); acervoEl.classList.toggle('peeked', on);
     grab.ariaExpanded = String(!on); grab.ariaLabel = on ? 'Mostrar detalhes' : 'Recolher detalhes';
     // o que está fora da faixa visível não recebe foco nem leitor de tela
-    for (const el of [...sheet.children] as HTMLElement[]) if (el !== grab && el !== peekBar && el !== titleEl) el.inert = on;
+    body.inert = foot.inert = on;
+    grab.dataset.tip = on ? 'Mostrar detalhes' : 'Recolher';
     peekTab.hidden = !(on && docked() === 'side');
     announce(on ? 'Detalhes recolhidos' : 'Detalhes à mostra');
     refit();
@@ -371,9 +370,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   }
   const slotNow = () => current;
   grab.onclick = () => { if (!justDragged) setPeek(!peek); };
-  collapseBtn.onclick = () => setPeek(true);
   peekTab.onclick = () => setPeek(false);
-  peekClose.onclick = () => uiClose();
   peekLid.onclick = () => toggleLid();
   let justDragged = false;
 
@@ -423,20 +420,21 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     for (const f of FACES) { const im = t![f]?.image as HTMLCanvasElement | undefined, r = rects[f]; if (im) g.drawImage(im, r.x * k, r.y * k, r.w * k, r.h * k); }
     return { url: (panoSrc = own(await canvasUrl(c))), note: '' };
   }
+  /** Guias de dobra: retângulos no SVG (traço fino que não escala) e nomes das faces em HTML (sempre ≥ 12 px). */
   function drawGuides(d: Drop) {
     const { rects, totalW, totalH } = dielineRects(d.w, d.h, d.d);
     guidesSvg.setAttribute('viewBox', `0 0 ${totalW} ${totalH}`);
-    guidesSvg.replaceChildren();
-    const ns = 'http://www.w3.org/2000/svg', fs = Math.max(6, Math.min(d.w, d.h, d.d) * 0.16);
-    for (const f of FACES) {
-      const r = rects[f];
-      const rc = document.createElementNS(ns, 'rect');
+    const ns = 'http://www.w3.org/2000/svg';
+    guidesSvg.replaceChildren(...FACES.map((f) => {
+      const r = rects[f], rc = document.createElementNS(ns, 'rect');
       for (const [k, v] of Object.entries({ x: r.x, y: r.y, width: r.w, height: r.h, fill: 'none', stroke: 'rgba(255,255,255,.85)', 'stroke-width': 1.4, 'stroke-dasharray': '5 4', 'vector-effect': 'non-scaling-stroke' })) rc.setAttribute(k, String(v));
-      const tx = document.createElementNS(ns, 'text');
-      for (const [k, v] of Object.entries({ x: r.x + r.w / 2, y: r.y + r.h / 2, 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-size': fs, fill: 'rgba(255,255,255,.9)', 'paint-order': 'stroke', stroke: 'rgba(0,0,0,.55)', 'stroke-width': fs * 0.18 })) tx.setAttribute(k, String(v));
-      tx.textContent = FACE_SHORT[f]; g2(rc, tx);
-    }
-    function g2(...n: Element[]) { guidesSvg.append(...n); }
+      return rc;
+    }));
+    artLabels.replaceChildren(...FACES.map((f) => {
+      const r = rects[f];
+      // faces estreitas (laterais): nome na vertical, para caber dentro da face
+      return h('span', { class: r.w < r.h * 0.5 ? 'v' : '', style: `left:${((r.x + r.w / 2) / totalW) * 100}%;top:${((r.y + r.h / 2) / totalH) * 100}%` }, FACE_SHORT[f]);
+    }));
   }
   async function showFace(f: Face) {
     if (!current) return;
@@ -462,9 +460,10 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     artView.hidden = !art; artView.classList.toggle('pano', m === 'pano'); artView.classList.toggle('face', m === 'art');
     heroCanvas.style.visibility = art ? 'hidden' : '';
     zoom?.reset();
-    if (!art) { artNote.hidden = true; if (hero) fitHero(); announce('Caixa em 3D'); return; }
+    if (!art) { artNote.hidden = true; setImmersive(false); if (hero) fitHero(); announce('Caixa em 3D'); return; }
+    if (docked() !== 'side' && !peek) setPeek(true);   // celular: a folha recolhe sozinha para a arte ganhar espaço
     placeArt();
-    if (m === 'art') { guidesSvg.replaceChildren(); artNote.hidden = true; await showFace(face); announce('Arte da caixa'); }
+    if (m === 'art') { guidesSvg.replaceChildren(); artLabels.replaceChildren(); artNote.hidden = true; await showFace(face); announce('Arte da caixa'); }
     else {
       artEmpty.hidden = true; artWrap.style.visibility = '';
       const d = current.drop, r = await panoUrl(d);
@@ -477,14 +476,24 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   function resetView(dropArt = false) {
     peek = false; sheet.classList.remove('peek'); acervoEl.classList.remove('peeked'); peekTab.hidden = true;
     grab.ariaExpanded = 'true'; grab.ariaLabel = 'Recolher detalhes';
-    for (const el of [...sheet.children] as HTMLElement[]) el.inert = false;
+    body.inert = foot.inert = false; acervoEl.classList.remove('immersive');
     mode = 'box'; ++buildToken; delete acervoEl.dataset.mode;
     modeBtns.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === 'box')));
     artView.hidden = true; heroCanvas.style.visibility = ''; artView.classList.remove('guides', 'pano', 'face'); guidesBtn.ariaPressed = 'false';
     zoom?.reset(); face = 'front';
     if (dropArt) { artImg.removeAttribute('src'); releaseArt(); }
   }
-  zoom = zoomable(artHost, artWrap, { onSwipe: (dir) => { if (mode === 'art') stepFace(dir); } });
+  /** Tela cheia na Arte/Planificada: um toque esconde folha e controles (como o app Fotos); outro toque traz de volta. */
+  function setImmersive(on: boolean) {
+    if (acervoEl.classList.contains('immersive') === on) return;
+    acervoEl.classList.toggle('immersive', on);
+    artHost.setAttribute('aria-label', on ? 'Toque para mostrar os controles' : 'Toque para ver em tela cheia');
+    refit();
+  }
+  zoom = zoomable(artHost, artWrap, {
+    onSwipe: (dir) => { if (mode === 'art') stepFace(dir); },
+    onTap: () => { if (mode !== 'box') setImmersive(!acervoEl.classList.contains('immersive')); },
+  });
 
   function openSlot(s: Slot) {
     if (current || !s.box || !s.tex) return;
@@ -503,10 +512,11 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     rx.t = 0.1; ry.t = calm ? 0 : -TAU;
     idleAt = performance.now() + 1900;
     veil.classList.add('on'); heroCanvas.classList.add('live'); acervoEl.classList.add('open'); acervoEl.dataset.open = s.drop.slug;
-    header.inert = rowsEl.inert = tagbar.inert = true; sheet.inert = false; modes.inert = false;
+    header.inert = rowsEl.inert = tagbar.inert = true; sheet.inert = false;
     setTimeout(() => {
       if (current !== s || closing) return;
       sheet.classList.add('in');
+      body.scrollTop = 0;
       sheet.focus({ preventScroll: true });
     }, calm ? 0 : 140);
     // textura em alta, trocada quando chegar
@@ -523,7 +533,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   function beginClose() {
     if (!current || closing) return;
     closing = true; sheet.style.transform = ''; sheet.classList.remove('in', 'peek'); veil.classList.remove('on'); acervoEl.classList.remove('open');
-    modes.inert = true; peekTab.hidden = true; resetView(true);
+    peekTab.hidden = true; resetView(true);
     header.inert = rowsEl.inert = tagbar.inert = false;
     if (sheet.contains(document.activeElement) || document.activeElement === sheet) current.el.focus({ preventScroll: true });
     sheet.inert = true;
@@ -653,19 +663,19 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   // para baixo de novo fecha; para cima traz a folha de volta. No painel lateral o arrasto para a direita recolhe.
   // Distância ou "peteleco" rápido; no sentido sem efeito há resistência elástica. O toque vertical no painel lateral continua rolando.
   let sd: { x: number; y: number; d: number; t: number; v: number; axis: '' | 'x' | 'y'; onGrab: boolean } | null = null;
-  const shift = (d: number, axis: 'x' | 'y') => axis === 'x' ? `translateX(${d}px)` : peek ? `translateY(calc(100% - var(--peek, 68px) + ${d}px))` : `translateY(${d}px)`;
-  sheet.addEventListener('pointerdown', (e) => {
+  const shift = (d: number, axis: 'x' | 'y') => axis === 'x' ? `translateX(${d}px)` : peek ? `translateY(calc(100% - var(--peek, 120px) + ${d}px))` : `translateY(${d}px)`;
+  head.addEventListener('pointerdown', (e) => {
     const btn = (e.target as HTMLElement).closest('button,a');
     if ((btn && btn !== grab) || !current || closing || e.button > 0) return;
     sd = { x: e.clientX, y: e.clientY, d: 0, t: performance.now(), v: 0, axis: '', onGrab: btn === grab };
   });
-  sheet.addEventListener('pointermove', (e) => {
+  head.addEventListener('pointermove', (e) => {
     if (!sd) return;
     const rx0 = e.clientX - sd.x, ry0 = e.clientY - sd.y, now = performance.now();
     if (!sd.axis) {
       if (Math.hypot(rx0, ry0) < 6) return;
       sd.axis = docked() === 'side' && Math.abs(rx0) > Math.abs(ry0) ? 'x' : 'y';
-      sheet.setPointerCapture(e.pointerId); sheet.classList.add('drag');
+      head.setPointerCapture(e.pointerId); sheet.classList.add('drag');
     }
     const raw = sd.axis === 'x' ? rx0 : ry0;
     const d = peek || raw >= 0 ? raw : -Math.sqrt(-raw) * 2.2;
@@ -682,7 +692,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     if (peek) { if (g.d < -40 || g.v < -0.5) setPeek(false); else if (down) uiClose(); }
     else if (down) setPeek(true);
   };
-  sheet.addEventListener('pointerup', sheetUp); sheet.addEventListener('pointercancel', sheetUp);
+  head.addEventListener('pointerup', sheetUp); head.addEventListener('pointercancel', sheetUp);
 
   /* ---------- loop ---------- */
   let raf = 0, last = performance.now();

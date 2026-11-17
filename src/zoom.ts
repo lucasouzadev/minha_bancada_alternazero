@@ -5,7 +5,7 @@
  */
 export interface Zoom { reset(): void; readonly scale: number }
 
-export function zoomable(host: HTMLElement, el: HTMLElement, opts: { max?: number; onSwipe?: (dir: -1 | 1) => void } = {}): Zoom {
+export function zoomable(host: HTMLElement, el: HTMLElement, opts: { max?: number; onSwipe?: (dir: -1 | 1) => void; onTap?: () => void } = {}): Zoom {
   const MAX = opts.max ?? 6;
   host.dataset.zoomable = '';
   host.style.touchAction = 'none';
@@ -13,7 +13,7 @@ export function zoomable(host: HTMLElement, el: HTMLElement, opts: { max?: numbe
   const pts = new Map<number, { x: number; y: number }>();
   let pinch: { d: number; s: number } | null = null;
   let down: { x: number; y: number; t: number; moved: boolean } | null = null;
-  let lastTap = 0;
+  let lastTap = 0, tapT = 0;
 
   const clampXY = () => {
     const w = el.offsetWidth * s, h = el.offsetHeight * s;
@@ -52,7 +52,9 @@ export function zoomable(host: HTMLElement, el: HTMLElement, opts: { max?: numbe
     if (e.type === 'pointerup' && s <= 1.02 && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.6) { opts.onSwipe?.(dx < 0 ? 1 : -1); return; }
     if (e.type === 'pointerup' && !d.moved && performance.now() - d.t < 300) {
       const now = performance.now();
-      if (now - lastTap < 320) { lastTap = 0; setScale(s > 1.02 ? 1 : 2.5); apply(true); } else lastTap = now;
+      // toque simples só "vale" depois de 320 ms sem segundo toque (senão é toque duplo = zoom)
+      if (now - lastTap < 320) { lastTap = 0; clearTimeout(tapT); setScale(s > 1.02 ? 1 : 2.5); apply(true); }
+      else { lastTap = now; clearTimeout(tapT); tapT = window.setTimeout(() => opts.onTap?.(), 330); }
     }
   };
   host.addEventListener('pointerup', end); host.addEventListener('pointercancel', end);

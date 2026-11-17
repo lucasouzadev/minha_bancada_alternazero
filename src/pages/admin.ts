@@ -6,12 +6,12 @@ import { dielineRects } from '../layout';
 import { createStage } from '../stage';
 import { FACES, FACE_LABEL, STATUS_LABEL, safeUrl, type Drop, type Face, type Finish, type Status } from '../types';
 import { go } from '../main';
-import { announce, h, icon, toast } from '../ui';
+import { announce, fmtDate, h, icon, share, toast } from '../ui';
 import { REMOTE, sb } from '../remote';
 import { makeOg } from '../og';
 
 export const FINISH_LABEL: Record<Finish, string> = { matte: 'Fosco', satin: 'Acetinado', gloss: 'Brilho' };
-const STEPS = ['Identidade', 'Caixa', 'Arte', 'Publicar'] as const;
+const STEPS = ['Identidade', 'Caixa', 'Arte', 'Ficha'] as const;
 /** Temas da Alternazero (a partir dos nomes dos drops) para sugerir como tag, além das já usadas. */
 const THEME_TAGS = ['halloween', 'alquimia', 'julgamento', 'insetos', 'mecha', 'investigação', 'horror', 'anime', 'ocultismo', 'cyber', 'gótico', 'corpo'];
 /** Itens que a Alternazero põe na caixa além da roupa (acessórios e embalagem), como atalhos de um toque. */
@@ -199,7 +199,8 @@ export async function adminPage(root: HTMLElement, id?: string) {
   const suggest = h('div', { class: 'chips', role: 'group', ariaLabel: 'Sugestões' });
   function renderSuggest() {
     const have = new Set(drop.tags.map((t) => t.toLowerCase()));
-    const q = tagsIn.value.split(',').pop()!.trim().toLowerCase();
+    // enquanto digita, filtra pelo termo; fora do campo (tags completas) mostra as sugestões gerais
+    const q = document.activeElement === tagsIn ? tagsIn.value.split(',').pop()!.trim().toLowerCase() : '';
     const list = pool.filter((t) => !have.has(t.toLowerCase()) && (!q || t.toLowerCase().includes(q))).slice(0, 10);
     suggest.replaceChildren(...list.map((t) => h('button', { class: 'chip', type: 'button', onclick: () => {
       drop.tags = [...drop.tags.filter((x) => x.toLowerCase() !== q), t]; tagsIn.value = drop.tags.join(', ');
@@ -207,7 +208,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
     } }, `+ ${t}`)));
     suggest.hidden = !list.length;
   }
-  tagsIn.addEventListener('input', renderSuggest);
+  tagsIn.addEventListener('input', renderSuggest); tagsIn.addEventListener('blur', () => setTimeout(renderSuggest, 150));
   // itens da caixa: os da marca primeiro, depois os já usados nos outros drops; um toque acrescenta uma linha
   const itemPool = [...new Set([...ITEM_SUGGEST, ...all.flatMap((d) => d.items ?? [])])];
   const itemSuggest = h('div', { class: 'chips', role: 'group', ariaLabel: 'Itens comuns' });
@@ -215,11 +216,12 @@ export async function adminPage(root: HTMLElement, id?: string) {
     const have = new Set(drop.items.map((x) => x.toLowerCase()));
     const list = itemPool.filter((t) => !have.has(t.toLowerCase())).slice(0, 8);
     itemSuggest.replaceChildren(...list.map((t) => h('button', { class: 'chip', type: 'button', onclick: () => {
-      drop.items = [...drop.items, t]; itemsTa.value = drop.items.join('\n'); renderItemSuggest(); persist();
+      drop.items = [...drop.items, t]; itemsTa.value = drop.items.join('\n'); renderItemSuggest(); fitTa(itemsTa); persist();
     } }, `+ ${t}`)));
     itemSuggest.hidden = !list.length;
   }
-  itemsTa.addEventListener('input', renderItemSuggest);
+  const fitTa = (ta: HTMLTextAreaElement) => { ta.style.height = 'auto'; ta.style.height = `${ta.scrollHeight + 2}px`; };
+  itemsTa.addEventListener('input', () => { renderItemSuggest(); fitTa(itemsTa); });
   const taglineIn = h('input', { name: 'tagline', value: drop.tagline, placeholder: 'Você pode correr, mas não pode se esconder.', autocomplete: 'off', enterkeyhint: 'next', oninput: () => { drop.tagline = taglineIn.value; } });
   const conceptTa = h('textarea', { name: 'concept', rows: 4, value: drop.concept, placeholder: 'A história do drop, em poucas linhas.', oninput: () => { drop.concept = conceptTa.value; } });
   const storeErr = h('p', { class: 'field-err', id: 'err-store', hidden: true });
@@ -288,24 +290,16 @@ export async function adminPage(root: HTMLElement, id?: string) {
   renderState(); renderTitle(); renderLink(); renderPresets(); renderSuggest(); renderItemSuggest();
 
   // ---------- passos ----------
-  const summary = h('ul', { class: 'sum', 'aria-label': 'Resumo' });
-  const renderSummary = () => {
-    const row = (ok: boolean, label: string, val: string) => h('li', { class: ok ? 'ok' : 'warn' }, icon(ok ? 'check' : 'alert', 18), h('span', {}, h('b', {}, label), ' ', val));
-    const hasArt = drop.artMode === 'dieline' ? !!drop.art.dieline : FACES.some((f) => drop.art[f]);
-    summary.replaceChildren(
-      row(!!drop.name.trim(), 'Nome', drop.name.trim() || 'falta dar um nome'),
-      row(true, 'Caixa', `${drop.w} × ${drop.h} × ${drop.d} mm · ${drop.openMode === 'book' ? 'livro' : 'tampa'} · ${FINISH_LABEL[drop.finish].toLowerCase()}`),
-      row(hasArt, 'Arte', hasArt ? 'enviada' : 'sem arte: a caixa fica cinza'),
-      row(true, 'Link', `/c/${drop.slug || slugify(drop.name) || '…'}`));
-  };
+  const hasArt = () => (drop.artMode === 'dieline' ? !!drop.art.dieline : FACES.some((f) => drop.art[f]));
+  const noArt = h('div', { class: 'notice', role: 'status' }, icon('alert', 18), h('span', {}, 'Ainda sem arte: a caixa aparece cinza no acervo.'));
   const more = (...kids: HTMLElement[]) => h('details', { class: 'more' }, h('summary', {}, 'Mais opções'), h('div', { class: 'more-body' }, ...kids));
   const sections = [
     h('section', { class: 'step', 'data-step': '0', 'aria-labelledby': 'st-0' },
       h('h3', { id: 'st-0', tabIndex: -1 }, 'Como se chama?'),
       h('div', { class: 'field' }, field('Nome', nameIn, undefined), nameErr, linkHint),
-      more(h('div', { class: 'grid2' }, text('Subtítulo', 'subtitle', 'Drop 07'), text('Artista', 'artist')),
-           h('div', { class: 'grid2' }, field('Lançamento', dateIn), field('Link (slug)', slugIn)),
-           field('Frase de destaque', taglineIn), field('Conceito', conceptTa))),
+      text('Subtítulo', 'subtitle', 'Drop 07'),
+      field('Lançamento', dateIn),
+      more(text('Artista', 'artist'), field('Link (slug)', slugIn, 'Gerado do nome; mude só se precisar.'))),
     h('section', { class: 'step', 'data-step': '1', 'aria-labelledby': 'st-1' },
       h('h3', { id: 'st-1', tabIndex: -1 }, 'Tamanho e abertura'),
       h('div', { class: 'chips', role: 'group', 'aria-label': 'Medidas prontas' }, ...chips),
@@ -318,13 +312,47 @@ export async function adminPage(root: HTMLElement, id?: string) {
       seg('Formato da arte', 'artMode', [['dieline', 'Faca única'], ['faces', 'Uma por face']], renderArt),
       artBox, warn),
     h('section', { class: 'step', 'data-step': '3', 'aria-labelledby': 'st-3' },
-      h('h3', { id: 'st-3', tabIndex: -1 }, 'Quase lá'),
-      summary,
-      h('div', { class: 'field' }, field('Dentro da caixa', itemsTa), itemSuggest), h('div', { class: 'field' }, field('Tags', tagsIn), suggest),
+      h('h3', { id: 'st-3', tabIndex: -1 }, 'A ficha'),
+      noArt,
+      field('Frase de destaque', taglineIn),
+      field('Conceito', conceptTa),
+      h('div', { class: 'field' }, field('Dentro da caixa', itemsTa), itemSuggest),
+      h('div', { class: 'field' }, field('Tags', tagsIn), suggest),
       seg('Status', 'status', Object.entries(STATUS_LABEL) as [Status, string][]),
       h('div', { class: 'field' }, field('Link da loja', storeIn), storeErr),
       h('label', { class: 'switch' }, pubIn, h('span', {}, h('b', {}, 'Publicado'), h('small', {}, 'Aparece no acervo e no link')))),
   ];
+  // ---------- depois de salvar: "Pronto" (o que acabou de subir) ----------
+  const doneEl = h('section', { class: 'step done-step', hidden: true, 'aria-labelledby': 'st-done' });
+  let isDone = false;
+  function showDone() {
+    isDone = true; ed.classList.add('is-done');
+    sections.forEach((x) => { x.hidden = true; }); doneEl.hidden = false;
+    stepBtns.forEach((b) => { b.classList.add('done'); b.classList.remove('cur'); b.removeAttribute('aria-current'); });
+    ed.dataset.stage = '1';
+    const url = `${location.origin}/c/${drop.slug}`;
+    const metaBits = [drop.subtitle, drop.date && fmtDate(drop.date), `${drop.w} × ${drop.h} × ${drop.d} mm`, drop.status && STATUS_LABEL[drop.status]].filter(Boolean) as string[];
+    doneEl.replaceChildren(
+      h('p', { class: `done-state ${drop.published ? 'live' : ''}` }, drop.published ? 'No ar no acervo' : 'Salvo como rascunho'),
+      h('h3', { id: 'st-done', tabIndex: -1 }, drop.name),
+      h('p', { class: 'meta' }, ...metaBits.map((t) => h('span', {}, t))),
+      ...(drop.tagline ? [h('p', { class: 'tagline' }, `“${drop.tagline}”`)] : []),
+      h('div', { class: 'done-link' },
+        h('span', { class: 'sel' }, `/c/${drop.slug}`),
+        h('button', { class: 'ghost sm', type: 'button', onclick: () => { void share(drop.name, `Veja a caixa ${drop.name} em 3D`, url); } }, icon('share', 18), 'Compartilhar')),
+      ...(drop.published ? [] : [h('p', { class: 'hint' }, 'Rascunho: só aparece no acervo depois de publicado.')]),
+      h('div', { class: 'act-list done-more' },
+        h('button', { type: 'button', onclick: () => go('/admin') }, icon('plus', 20), 'Criar outro drop'),
+        h('button', { type: 'button', onclick: () => { buildPicker(); pickDlg.showModal(); } }, icon('list', 20), 'Abrir outro drop')));
+    foot.replaceChildren(
+      h('button', { class: 'ghost', type: 'button', 'data-testid': 'edit-again', onclick: () => show(0) }, 'Editar'),
+      drop.published
+        ? h('button', { class: 'primary', type: 'button', 'data-testid': 'see', onclick: () => go(`/c/${encodeURIComponent(drop.slug)}`) }, 'Ver no acervo')
+        : h('button', { class: 'primary', type: 'button', 'data-testid': 'publish-now', onclick: () => { drop.published = true; pubIn.checked = true; renderState(); void save(); } }, 'Publicar agora'));
+    scroller.scrollTop = 0;
+    announce(drop.published ? `${drop.name} está no ar no acervo.` : `${drop.name} salvo como rascunho.`);
+    (doneEl.querySelector('h3') as HTMLElement).focus({ preventScroll: true });
+  }
 
   // ---------- salvar ----------
   const saveBtn = h('button', { class: 'primary', type: 'button', 'data-testid': 'save' }, 'Salvar');
@@ -346,6 +374,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
     clearTimeout(draftT); dirty = false; await clearDraft(key); await clearDraft(drop.id);
     if (isNew) { isNew = false; key = drop.id; history.replaceState({}, '', `/admin/${drop.id}`); }
     renderMode();
+    showDone();
   };
   saveBtn.onclick = save;
   const onKey = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); } };
@@ -369,7 +398,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
   const scroller = h('div', { class: 'ed-scroll' },
     recovered ? h('div', { class: 'notice', role: 'status' }, icon('alert', 18), h('span', {}, copied ? 'Cópia pronta: ajuste o nome e salve. ' : 'Recuperamos o que você não tinha salvo. '),
       h('button', { class: 'txt sm', type: 'button', onclick: async () => { clearTimeout(draftT); dirty = false; await clearDraft(key); go(location.pathname); } }, copied ? 'Cancelar' : 'Descartar')) : null,
-    ...sections);
+    ...sections, doneEl);
   const foot = h('div', { class: 'ed-foot' });
   const ed = h('div', { class: 'ed', 'data-mode': isNew ? 'new' : 'edit' },
     h('header', { class: 'ed-top' }, backLink, h('div', { class: 'ed-title' }, heading, titleSub), stateChip, menuBtn),
@@ -380,7 +409,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
   function renderMode() {
     heading.textContent = isNew ? 'Novo drop' : 'Editar drop';
     ed.dataset.mode = isNew ? 'new' : 'edit';
-    renderFoot();
+    if (!isDone) renderFoot();
   }
   function renderFoot() {
     const last = step === STEPS.length - 1;
@@ -393,12 +422,13 @@ export async function adminPage(root: HTMLElement, id?: string) {
     else foot.replaceChildren(...(step > 0 ? [back] : []), last ? saveBtn : next);
   }
   function show(n: number) {
+    if (isDone) { isDone = false; ed.classList.remove('is-done'); doneEl.hidden = true; }
     step = Math.max(0, Math.min(STEPS.length - 1, n));
     sections.forEach((s, i) => { s.hidden = i !== step; });
     stepBtns.forEach((b, i) => { b.classList.toggle('done', i < step); b.classList.toggle('cur', i === step); i === step ? b.setAttribute('aria-current', 'step') : b.removeAttribute('aria-current'); });
     ed.dataset.step = String(step);
     ed.dataset.stage = step === 1 || step === 2 ? '1' : '0';   // a prévia só aparece onde ela ajuda (celular)
-    if (step === 3) renderSummary();
+    if (step === 3) { noArt.hidden = hasArt(); requestAnimationFrame(() => fitTa(itemsTa)); }
     renderFoot();
     scroller.scrollTop = 0;
     announce(`Passo ${step + 1} de ${STEPS.length}: ${STEPS[step]}`);
@@ -406,14 +436,21 @@ export async function adminPage(root: HTMLElement, id?: string) {
 
   // ---------- menu e seletor de drop ----------
   const dlg = (label: string, ...kids: (Node | null)[]) => {
-    const d = h('dialog', { class: 'sheet-dlg', ariaLabel: label }, ...kids);
+    const head = h('div', { class: 'dlg-head' }, h('span', { class: 'sh-handle', 'aria-hidden': 'true' }), h('p', { class: 'dlg-title' }, label));
+    const d = h('dialog', { class: 'sheet-dlg', ariaLabel: label }, head, ...kids);
     d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
+    // mesma folha do acervo: arrastar a alça para baixo fecha
+    let y0: number | null = null, dy = 0;
+    head.addEventListener('pointerdown', (e) => { y0 = e.clientY; dy = 0; head.setPointerCapture(e.pointerId); d.classList.add('drag'); });
+    head.addEventListener('pointermove', (e) => { if (y0 === null) return; dy = Math.max(0, e.clientY - y0); d.style.transform = `translateY(${dy}px)`; });
+    const up = () => { if (y0 === null) return; y0 = null; d.classList.remove('drag'); d.style.transform = ''; if (dy > 70) d.close(); };
+    head.addEventListener('pointerup', up); head.addEventListener('pointercancel', up);
     return d;
   };
   const menuList = h('div', { class: 'act-list' });
-  const menuDlg = dlg('Ações do drop', menuList);
+  const menuDlg = dlg('Ações', menuList);
   const pickList = h('div', { class: 'act-list' });
-  const pickDlg = dlg('Abrir outro drop', h('p', { class: 'eyebrow dlg-h' }, 'Abrir outro drop'), pickList);
+  const pickDlg = dlg('Abrir outro drop', pickList);
   const act = (label: string, ico: string, fn: () => void, cls = '') => h('button', { class: cls, type: 'button', onclick: () => { menuDlg.close(); fn(); } }, icon(ico, 20), label);
   function buildMenu() {
     const items: (HTMLElement | null)[] = [
@@ -424,7 +461,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
       !isNew ? act('Excluir drop', 'trash', async () => {
         if (!confirm(`Excluir "${drop.name}"? Isso não pode ser desfeito.`)) return;
         await deleteDrop(drop.id); await clearDraft(drop.id); toast('Drop excluído'); go('/admin');
-      }, 'danger') : null,
+      }, 'act-danger') : null,
       h('button', { type: 'button', class: 'cancel', onclick: () => menuDlg.close() }, 'Cancelar')];
     menuList.replaceChildren(...items.filter((x): x is HTMLElement => !!x));
   }
