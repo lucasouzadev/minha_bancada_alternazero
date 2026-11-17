@@ -189,11 +189,12 @@ html:has(.acervo){scrollbar-gutter:stable}
 
 /* ===== folha recolhida (só a caixa em tela) ===== */
 .sheet{--peek:68px}
-button.grab{display:block;width:calc(100% + 6px);padding:0;border:0;background:none;color:inherit;cursor:grab;touch-action:none}
+/* área de toque de 44 px (a barra desenhada continua no mesmo lugar): sobe até a borda da folha e desce sobre o topo do título */
+button.grab{display:block;width:calc(100% + 6px);height:44px;margin:-6px 0 -12px -6px;padding:0;border:0;background:none;color:inherit;cursor:grab;touch-action:none}
+button.grab::before{top:12px}
 button.grab:focus-visible{outline-offset:-4px;border-radius:12px}
 .sheet.in.peek{transform:translateY(calc(100% - var(--peek)));overflow:hidden}
 .sheet.peek .title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:30px;padding-right:150px}
-.sheet.peek .grab{height:26px}
 .peek-bar{display:none;position:absolute;top:8px;right:8px;align-items:center;gap:2px;z-index:2}
 .sheet.peek .peek-bar{display:flex}
 .pill.sm{min-width:0;min-height:40px;padding:0 18px;font-size:14px}
