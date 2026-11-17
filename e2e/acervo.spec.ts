@@ -77,8 +77,7 @@ test.describe('Acervo — funções @flow', () => {
     await expect(link).toHaveAttribute('href', 'https://www.alternazero.com/lancamentos/drop-mutacoes/');
     await expect(link).toHaveAttribute('target', '_blank');
     expect(await link.getAttribute('rel')).toContain('noopener');
-    await page.keyboard.press('Escape').catch(() => {});
-    await sh.getByRole('button', { name: 'Fechar', exact: true }).click().catch(() => {});
+    await sh.getByRole('button', { name: 'Fechar', exact: true }).click();
     await expectClosed(page);
     // outra caixa: selo de esgotado, sem link, e a folha começa no topo (não herda a rolagem)
     await openBox(page, 'cicatriz');

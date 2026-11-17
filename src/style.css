@@ -363,6 +363,8 @@ input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.7);cursor:poi
 html:has(.ed),html:has(.ed) body{overflow:hidden;height:100%}
 .ed{--stage-h:clamp(150px,27svh,270px);position:fixed;left:0;right:0;top:0;height:var(--vvh,100svh);transform:translateY(var(--vvt,0px));
   display:grid;grid-template-rows:auto auto auto minmax(0,1fr) auto;background:var(--bg);overscroll-behavior:none}
+/* cada bloco na sua linha: com a prévia escondida (display:none) os outros não "sobem" uma linha e perdem a rolagem interna */
+.ed-top{grid-row:1}.ed-steps{grid-row:2}.ed-stage{grid-row:3}.ed-scroll{grid-row:4}.ed-foot{grid-row:5}
 .ed-top{display:flex;align-items:center;gap:6px;padding:calc(env(safe-area-inset-top) + 6px) max(10px,env(safe-area-inset-right)) 2px max(10px,env(safe-area-inset-left))}
 .ed-title{flex:1;min-width:0;display:grid;gap:3px}
 .ed-title h2{font:700 24px/1 var(--display);text-transform:uppercase;letter-spacing:.03em}
@@ -405,7 +407,7 @@ html:has(.ed),html:has(.ed) body{overflow:hidden;height:100%}
 @media (pointer:coarse){.seg button{min-height:44px}}
 .seg button[aria-checked="true"]{background:var(--raise);color:var(--fg);box-shadow:inset 0 0 0 1px var(--line-2)}
 /* celular: uma linha que rola na horizontal (vai até a borda da tela, o chip cortado indica que há mais) */
-.chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -18px;padding:2px 18px;scroll-snap-type:x proximity;overscroll-behavior-x:contain}
+.chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -18px;padding:2px 18px;scroll-padding:0 18px;scroll-snap-type:x proximity;overscroll-behavior-x:contain}
 .chips::-webkit-scrollbar{display:none}
 @media (min-width:600px){.chips{flex-wrap:wrap;overflow:visible;margin:0;padding:0}}
 .chip{flex:none;scroll-snap-align:start;min-height:var(--hit);padding:0 14px;border-radius:999px;border:1px solid var(--line-2);background:none;font-size:14px;line-height:1;color:var(--fg-2);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
