@@ -168,7 +168,17 @@ test.describe('Editor — funções @flow', () => {
     await name(page).fill('Rascunho Vivo');
     await next(page);
     await page.getByLabel('Largura (mm)').fill('222');
-    await page.waitForTimeout(900);
+    // espera o rascunho estar mesmo gravado no aparelho (e não um tempo fixo, que varia com a máquina)
+    await expect.poll(() => page.evaluate(() => new Promise<number | null>((res) => {
+      const r = indexedDB.open('caixa3d');
+      r.onerror = () => res(null);
+      r.onsuccess = () => {
+        try {
+          const g = r.result.transaction('drafts').objectStore('drafts').get('new');
+          g.onsuccess = () => { res(g.result?.w ?? null); r.result.close(); };
+        } catch { res(null); }
+      };
+    })), { timeout: 15_000 }).toBe(222);
     await page.reload();
     await expect(page.getByText(/recuperamos o que você não tinha salvo/i)).toBeVisible();
     await expect(name(page)).toHaveValue('Rascunho Vivo');

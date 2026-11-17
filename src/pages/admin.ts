@@ -125,7 +125,11 @@ export async function adminPage(root: HTMLElement, id?: string) {
 
   // ---------- rascunho automático ----------
   let draftT = 0;
-  const persist = () => { dirty = true; clearTimeout(draftT); draftT = window.setTimeout(() => { if (dirty) saveDraft(key, drop); }, 500); };
+  const persist = () => { dirty = true; clearTimeout(draftT); draftT = window.setTimeout(() => { if (dirty) saveDraft(key, drop); }, 350); };
+  // sair da página (recarregar, trocar de app, fechar) grava na hora o que ainda estava esperando o intervalo
+  const flush = () => { if (dirty) { clearTimeout(draftT); saveDraft(key, drop); } };
+  const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
+  addEventListener('pagehide', flush); document.addEventListener('visibilitychange', onHide);
 
   // ---------- campos ----------
   const field = (label: string, el: HTMLElement, hint?: string) =>
@@ -436,6 +440,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
     clearTimeout(timer); clearTimeout(artT); clearTimeout(typT); clearTimeout(draftT);
     if (dirty) saveDraft(key, drop);
     removeEventListener('keydown', onKey); removeEventListener('pageshow', onShow);
+    removeEventListener('pagehide', flush); document.removeEventListener('visibilitychange', onHide);
     vv?.removeEventListener('resize', size); vv?.removeEventListener('scroll', size);
     menuDlg.remove(); pickDlg.remove();
     urls.forEach((u) => URL.revokeObjectURL(u));
