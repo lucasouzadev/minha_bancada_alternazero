@@ -476,7 +476,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   function resetView(dropArt = false) {
     peek = false; sheet.classList.remove('peek'); acervoEl.classList.remove('peeked'); peekTab.hidden = true;
     grab.ariaExpanded = 'true'; grab.ariaLabel = 'Recolher detalhes';
-    body.inert = foot.inert = false; acervoEl.classList.remove('immersive');
+    body.inert = foot.inert = false; acervoEl.classList.remove('immersive'); faceTabs.inert = guidesBtn.inert = false;
     mode = 'box'; ++buildToken; delete acervoEl.dataset.mode;
     modeBtns.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === 'box')));
     artView.hidden = true; heroCanvas.style.visibility = ''; artView.classList.remove('guides', 'pano', 'face'); guidesBtn.ariaPressed = 'false';
@@ -487,6 +487,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   function setImmersive(on: boolean) {
     if (acervoEl.classList.contains('immersive') === on) return;
     acervoEl.classList.toggle('immersive', on);
+    faceTabs.inert = guidesBtn.inert = on;   // escondidos não recebem foco nem leitor de tela
     artHost.setAttribute('aria-label', on ? 'Toque para mostrar os controles' : 'Toque para ver em tela cheia');
     refit();
   }
