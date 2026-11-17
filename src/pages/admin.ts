@@ -4,7 +4,7 @@ import { buildBox, type BuiltBox } from '../box';
 import { clearDraft, deleteDrop, getDrop, listDropMeta, loadDraft, newDrop, saveDraft, saveDrop, slugify } from '../db';
 import { dielineRects } from '../layout';
 import { createStage } from '../stage';
-import { FACES, FACE_LABEL, type Drop, type Face, type Finish } from '../types';
+import { FACES, FACE_LABEL, STATUS_LABEL, safeUrl, type Drop, type Face, type Finish, type Status } from '../types';
 import { go } from '../main';
 import { announce, h, icon, toast } from '../ui';
 import { REMOTE, sb } from '../remote';
@@ -12,6 +12,8 @@ import { makeOg } from '../og';
 
 export const FINISH_LABEL: Record<Finish, string> = { matte: 'Fosco', satin: 'Acetinado', gloss: 'Brilho' };
 const STEPS = ['Identidade', 'Caixa', 'Arte', 'Publicar'] as const;
+/** Temas da Alternazero (a partir dos nomes dos drops) para sugerir como tag, além das já usadas. */
+const THEME_TAGS = ['halloween', 'alquimia', 'julgamento', 'insetos', 'mecha', 'investigação', 'horror', 'anime', 'ocultismo', 'cyber', 'gótico', 'corpo'];
 /** Medidas prontas (mm): largura × altura × profundidade. */
 const PRESETS: [string, [number, number, number]][] = [['Padrão', [200, 300, 60]], ['Compacta', [150, 200, 50]], ['Larga', [250, 350, 80]], ['Quadrada', [200, 200, 80]]];
 
@@ -83,6 +85,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
     Object.assign(drop, rest, isNew ? {} : { id: drop.id });
     recovered = dirty = true; copied = !!dup;
   }
+  drop.tagline ??= ''; drop.concept ??= ''; drop.storeUrl ??= ''; drop.status ??= 'available';
   if (!drop.slug && drop.name) drop.slug = slugify(drop.name);
   // slug acompanha o nome só em drop novo cujo link ainda é o automático (renomear um drop publicado não muda o link)
   let slugTouched = !isNew || (!!drop.slug && drop.slug !== slugify(drop.name));
@@ -171,7 +174,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
   const renderPresets = () => chips.forEach((c) => c.setAttribute('aria-pressed', String(c.dataset.dims === `${drop.w}x${drop.h}x${drop.d}`)));
 
   /** Escolha entre poucas opções, de um toque (no lugar do select): grupo de rádio acessível. */
-  const seg = <T extends string>(label: string, key: 'finish' | 'openMode' | 'artMode', opts: [T, string][], after?: () => void) => {
+  const seg = <T extends string>(label: string, key: 'finish' | 'openMode' | 'artMode' | 'status', opts: [T, string][], after?: () => void) => {
     const btns = opts.map(([v, l]) => h('button', { type: 'button', role: 'radio', 'data-v': v, onclick: () => { (drop as any)[key] = v; paint(); after?.(); schedule(); persist(); } }, l));
     const paint = () => btns.forEach((b) => b.setAttribute('aria-checked', String((drop as any)[key] === b.dataset.v)));
     binders.push(paint); paint();
@@ -185,7 +188,30 @@ export async function adminPage(root: HTMLElement, id?: string) {
   };
   const itemsTa = h('textarea', { name: 'items', rows: 3, placeholder: 'Uma por linha', value: drop.items.join('\n'), autocorrect: 'off', oninput: () => { drop.items = itemsTa.value.split('\n').map((s) => s.trim()).filter(Boolean); } });
   const tagsIn = h('input', { name: 'tags', value: drop.tags.join(', '), placeholder: 'horror, anime, ocultismo', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'none', enterkeyhint: 'done', oninput: () => { drop.tags = tagsIn.value.split(',').map((s) => s.trim()).filter(Boolean); } });
-  binders.push(() => { itemsTa.value = drop.items.join('\n'); tagsIn.value = drop.tags.join(', '); });
+  binders.push(() => { itemsTa.value = drop.items.join('\n'); tagsIn.value = drop.tags.join(', '); renderSuggest(); });
+
+  // sugestões de tags: as já usadas nos outros drops (mais comuns primeiro) e os temas da marca; um toque adiciona
+  const used = new Map<string, number>();
+  for (const d of all) for (const t of d.tags ?? []) used.set(t, (used.get(t) ?? 0) + 1);
+  const pool = [...new Set([...[...used.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t), ...THEME_TAGS])];
+  const suggest = h('div', { class: 'chips', role: 'group', ariaLabel: 'Sugestões' });
+  function renderSuggest() {
+    const have = new Set(drop.tags.map((t) => t.toLowerCase()));
+    const q = tagsIn.value.split(',').pop()!.trim().toLowerCase();
+    const list = pool.filter((t) => !have.has(t.toLowerCase()) && (!q || t.toLowerCase().includes(q))).slice(0, 10);
+    suggest.replaceChildren(...list.map((t) => h('button', { class: 'chip', type: 'button', onclick: () => {
+      drop.tags = [...drop.tags.filter((x) => x.toLowerCase() !== q), t]; tagsIn.value = drop.tags.join(', ');
+      renderSuggest(); persist();
+    } }, `+ ${t}`)));
+    suggest.hidden = !list.length;
+  }
+  tagsIn.addEventListener('input', renderSuggest);
+  const taglineIn = h('input', { name: 'tagline', value: drop.tagline, placeholder: 'Você pode correr, mas não pode se esconder.', autocomplete: 'off', enterkeyhint: 'next', oninput: () => { drop.tagline = taglineIn.value; } });
+  const conceptTa = h('textarea', { name: 'concept', rows: 4, value: drop.concept, placeholder: 'A história do drop, em poucas linhas.', oninput: () => { drop.concept = conceptTa.value; } });
+  const storeErr = h('p', { class: 'field-err', id: 'err-store', hidden: true });
+  const storeIn = h('input', { name: 'storeUrl', type: 'url', inputMode: 'url', value: drop.storeUrl, placeholder: 'https://www.alternazero.com/lancamentos/…', autocomplete: 'off', autocapitalize: 'none', spellcheck: false, enterkeyhint: 'done', 'aria-describedby': 'err-store',
+    oninput: () => { drop.storeUrl = storeIn.value.trim(); storeErr.hidden = true; storeIn.ariaInvalid = 'false'; } });
+  binders.push(() => { taglineIn.value = drop.tagline ?? ''; conceptTa.value = drop.concept ?? ''; storeIn.value = drop.storeUrl ?? ''; });
 
   // ---------- arte ----------
   const artBox = h('div', { class: 'artbox' });
@@ -245,7 +271,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
   const renderState = () => { stateChip.textContent = drop.published ? 'Publicado' : 'Rascunho'; stateChip.classList.toggle('live', drop.published); };
   const pubIn = h('input', { type: 'checkbox', name: 'published', checked: drop.published, onchange: () => { drop.published = pubIn.checked; renderState(); } });
   binders.push(() => { pubIn.checked = drop.published; renderState(); });
-  renderState(); renderTitle(); renderLink(); renderPresets();
+  renderState(); renderTitle(); renderLink(); renderPresets(); renderSuggest();
 
   // ---------- passos ----------
   const summary = h('ul', { class: 'sum', 'aria-label': 'Resumo' });
@@ -264,7 +290,8 @@ export async function adminPage(root: HTMLElement, id?: string) {
       h('h3', { id: 'st-0', tabIndex: -1 }, 'Como se chama?'),
       h('div', { class: 'field' }, field('Nome', nameIn, undefined), nameErr, linkHint),
       more(h('div', { class: 'grid2' }, text('Subtítulo', 'subtitle', 'Drop 07'), text('Artista', 'artist')),
-           h('div', { class: 'grid2' }, field('Lançamento', dateIn), field('Link (slug)', slugIn)))),
+           h('div', { class: 'grid2' }, field('Lançamento', dateIn), field('Link (slug)', slugIn)),
+           field('Frase de destaque', taglineIn), field('Conceito', conceptTa))),
     h('section', { class: 'step', 'data-step': '1', 'aria-labelledby': 'st-1' },
       h('h3', { id: 'st-1', tabIndex: -1 }, 'Tamanho e abertura'),
       h('div', { class: 'chips', role: 'group', 'aria-label': 'Medidas prontas' }, ...chips),
@@ -279,7 +306,9 @@ export async function adminPage(root: HTMLElement, id?: string) {
     h('section', { class: 'step', 'data-step': '3', 'aria-labelledby': 'st-3' },
       h('h3', { id: 'st-3', tabIndex: -1 }, 'Quase lá'),
       summary,
-      field('Dentro da caixa', itemsTa), field('Tags', tagsIn),
+      field('Dentro da caixa', itemsTa), h('div', { class: 'field' }, field('Tags', tagsIn), suggest),
+      seg('Status', 'status', Object.entries(STATUS_LABEL) as [Status, string][]),
+      h('div', { class: 'field' }, field('Link da loja', storeIn), storeErr),
       h('label', { class: 'switch' }, pubIn, h('span', {}, h('b', {}, 'Publicado'), h('small', {}, 'Aparece no acervo e no link')))),
   ];
 
@@ -290,6 +319,10 @@ export async function adminPage(root: HTMLElement, id?: string) {
   const save = async () => {
     if (saving) return;
     if (!drop.name.trim()) { show(0); showNameError(); nameIn.focus(); return; }
+    if (drop.storeUrl && !safeUrl(drop.storeUrl)) {
+      show(3); storeErr.textContent = 'Use um link completo, começando com https://'; storeErr.hidden = false; storeIn.ariaInvalid = 'true'; storeIn.focus(); return;
+    }
+    if (drop.storeUrl) drop.storeUrl = safeUrl(drop.storeUrl)!;
     saving = true; saveBtn.disabled = true; saveBtn.ariaBusy = 'true'; saveBtn.textContent = 'Salvando…';
     const done = () => { saving = false; saveBtn.disabled = false; saveBtn.ariaBusy = 'false'; saveBtn.textContent = 'Salvar'; };
     try {

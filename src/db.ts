@@ -64,7 +64,7 @@ export const clearDraft = (key: string) => run('readwrite', (s) => s.delete(key)
 export function newDrop(): Drop {
   return {
     id: crypto.randomUUID(), slug: '', name: '', subtitle: '', date: new Date().toISOString().slice(0, 10),
-    artist: '', items: [], tags: [], w: 200, h: 300, d: 60, finish: 'matte', openMode: 'top',
+    artist: '', items: [], tags: [], tagline: '', concept: '', status: 'available', storeUrl: '', w: 200, h: 300, d: 60, finish: 'matte', openMode: 'top',
     inner: '#15090c', tissue: '#8c1d2f', artMode: 'dieline', art: {}, published: false, updatedAt: Date.now(),
   };
 }
@@ -81,12 +81,12 @@ function ensureSeed() {
       d.published = true; return d;
     };
     const drops = [
-      await mk({ name: 'Mutações', slug: 'mutacoes', date: '2026-10-10', w: 200, h: 300, d: 60, openMode: 'book', finish: 'satin', items: ['Camiseta oversized', 'Sticker pack', 'Cartão numerado'], tags: ['horror', 'anime', 'corpo'] }, true, 7),
+      await mk({ name: 'Mutações', slug: 'mutacoes', date: '2026-10-10', tagline: 'Você pode correr, mas não pode se esconder.', concept: 'Especial de Halloween: o corpo em mutação, entre vírus, fungos e flores. A caixa guarda a camiseta, os adesivos e o cartão numerado do drop.', storeUrl: 'https://www.alternazero.com/lancamentos/drop-mutacoes/', w: 200, h: 300, d: 60, openMode: 'book', finish: 'satin', items: ['Camiseta oversized', 'Sticker pack', 'Cartão numerado'], tags: ['horror', 'anime', 'corpo'] }, true, 7),
       await mk({ name: 'Ensaio', slug: 'ensaio', date: '2026-06-21', w: 160, h: 240, d: 90, openMode: 'top', finish: 'matte', inner: '#101014', tissue: '#6b6b78', items: ['Moletom', 'Pin'], tags: ['insetos', 'ocultismo'] }, false, 21),
       await mk({ name: 'Circuito', slug: 'circuito', date: '2026-02-02', w: 220, h: 320, d: 40, openMode: 'book', finish: 'gloss', inner: '#0c0c0c', tissue: '#cfcfcf', items: ['Camiseta', 'Patch'], tags: ['cyber', 'gótico'] }, false, 99),
       await mk({ name: 'Relicário', slug: 'relicario', date: '2025-11-08', w: 180, h: 180, d: 70, openMode: 'top', finish: 'satin', items: ['Camiseta', 'Chaveiro'], tags: ['ocultismo'] }, true, 31),
-      await mk({ name: 'Vigília', slug: 'vigilia', date: '2025-08-15', w: 240, h: 340, d: 50, openMode: 'book', finish: 'matte', items: ['Jaqueta'], tags: ['horror'] }, false, 63),
-      await mk({ name: 'Cicatriz', slug: 'cicatriz', date: '2025-04-01', w: 150, h: 210, d: 55, openMode: 'top', finish: 'gloss', items: ['Boné', 'Pin'], tags: ['anime'] }, true, 77),
+      await mk({ name: 'Vigília', slug: 'vigilia', date: '2025-08-15', status: 'soon', w: 240, h: 340, d: 50, openMode: 'book', finish: 'matte', items: ['Jaqueta'], tags: ['horror'] }, false, 63),
+      await mk({ name: 'Cicatriz', slug: 'cicatriz', date: '2025-04-01', status: 'soldout', w: 150, h: 210, d: 55, openMode: 'top', finish: 'gloss', items: ['Boné', 'Pin'], tags: ['anime'] }, true, 77),
     ];
     for (const d of drops) await run('readwrite', (s) => s.put(d));
   })());

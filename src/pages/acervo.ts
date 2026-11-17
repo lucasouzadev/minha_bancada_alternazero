@@ -6,7 +6,7 @@ import { collectionUrl, getOwned, toggleOwned } from '../collection';
 import { listDrops } from '../db';
 import { GL } from '../gl';
 import { dielineRects } from '../layout';
-import { FACES, type Drop, type Face } from '../types';
+import { FACES, STATUS_LABEL, safeUrl, type Drop, type Face } from '../types';
 import { zoomable, type Zoom } from '../zoom';
 import { announce, fmtDate, h, icon, reducedMotion, share, toast, usingKeyboard } from '../ui';
 
@@ -54,15 +54,18 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   }));
   /** Colunas vêm do CSS (--cols por classe de tela); cada fileira é uma tábua. Reagrupa só quando muda. */
   let cols = 0;
-  function groupRows() {
-    const c = Math.max(1, Math.min(colsOf(acervoEl), slots.length || 1));
-    if (c === cols) return;
+  let tagSel = '';   // '' = todas as caixas
+  const shown = () => (tagSel ? slots.filter((s) => s.drop.tags.includes(tagSel)) : slots);
+  function groupRows(force = false) {
+    const vis = shown();
+    const c = Math.max(1, Math.min(colsOf(acervoEl), vis.length || 1));
+    if (c === cols && !force) return;
     cols = c;
     const focused = slots.find((s) => s.el === document.activeElement);
     rowsEl.style.setProperty('--c', String(c));
     rowsEl.querySelectorAll('.row').forEach((r) => r.remove());
-    const n = Math.max(1, Math.ceil(slots.length / c));
-    for (let i = 0; i < n; i++) rowsEl.append(h('div', { class: 'row' }, ...slots.slice(i * c, i * c + c).map((s) => s.el)));
+    const n = Math.max(1, Math.ceil(vis.length / c));
+    for (let i = 0; i < n; i++) rowsEl.append(h('div', { class: 'row' }, ...vis.slice(i * c, i * c + c).map((s) => s.el)));
     focused?.el.focus({ preventScroll: true });
   }
 
@@ -72,11 +75,18 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   const openBtn = h('button', { class: 'pill', 'data-testid': 'lid', ariaLabel: 'Abrir tampa' }, 'Abrir');
   const titleEl = h('h2', { class: 'title', id: 'sheet-title' });
   const metaEl = h('p', { class: 'meta' });
+  const taglineEl = h('p', { class: 'tagline', hidden: true });
   const itemsEl = h('ul', { class: 'items', ariaLabel: 'Dentro da caixa' });
   const itemsBox = h('section', { class: 'sec' }, h('p', { class: 'eyebrow' }, 'Dentro da caixa'), itemsEl);
   // ficha técnica: só aparece no painel lateral de telas grandes (o CSS esconde no resto)
   const specsEl = h('dl', { class: 'specs' });
   const fichaEl = h('section', { class: 'sec ficha', ariaLabel: 'Ficha técnica' }, h('p', { class: 'eyebrow' }, 'Ficha técnica'), specsEl);
+  const conceptEl = h('p', { class: 'concept' });
+  const conceptMore = h('button', { class: 'txt sm', type: 'button', ariaExpanded: 'false', onclick: () => {
+    const open = conceptEl.classList.toggle('open'); conceptMore.ariaExpanded = String(open); conceptMore.textContent = open ? 'Ler menos' : 'Ler mais';
+  } }, 'Ler mais');
+  const aboutBox = h('section', { class: 'sec', hidden: true, ariaLabel: 'Sobre o drop' }, h('p', { class: 'eyebrow' }, 'Sobre'), conceptEl, conceptMore);
+  const storeLink = h('a', { class: 'ghost store-link', target: '_blank', rel: 'noopener noreferrer', hidden: true, 'data-testid': 'store-link' }, icon('external', 18), 'Ver na loja');
   const grab = h('button', { class: 'grab', type: 'button', ariaLabel: 'Recolher detalhes', ariaExpanded: 'true', 'data-testid': 'grab' });
   // faixa que fica visível quando a folha está recolhida (só a caixa na tela)
   const peekLid = h('button', { class: 'pill sm', type: 'button', ariaLabel: 'Abrir tampa' }, 'Abrir');
@@ -87,7 +97,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   const sheet = h('section', { class: 'sheet', 'data-testid': 'sheet', role: 'dialog', 'aria-labelledby': 'sheet-title', tabIndex: -1 },
     grab,
     h('div', { class: 'acts' }, openBtn, h('span', { class: 'sp' }), isShared ? null : ownBtn, shareBtn, collapseBtn, closeBtn),
-    titleEl, metaEl, itemsBox, fichaEl, peekBar);
+    titleEl, metaEl, taglineEl, aboutBox, itemsBox, fichaEl, storeLink, peekBar);
   sheet.inert = true;
 
   const shareCol = h('button', { class: 'ico', ariaLabel: 'Compartilhar coleção', 'data-tip': 'Compartilhar coleção', 'data-testid': 'share-collection', onclick: async () => {
@@ -119,8 +129,14 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   } }, 'Guias de dobra');
   const artNote = h('p', { class: 'art-note', hidden: true });
   const artView = h('div', { class: 'artview', 'data-testid': 'artview', hidden: true }, artHost, faceTabs, guidesBtn, artNote);
+  // filtro por tag: chips das tags usadas nos drops publicados, da mais comum para a menos
+  const tagCount = new Map<string, number>();
+  for (const d of drops) for (const t of d.tags) tagCount.set(t, (tagCount.get(t) ?? 0) + 1);
+  const tagList = [...tagCount.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'pt-BR')).map(([t]) => t);
+  const tagBtns = ['', ...tagList].map((t) => h('button', { class: 'chip', type: 'button', 'data-tag': t, 'data-testid': t ? 'tag-chip' : 'tag-all', 'aria-pressed': String(t === ''), onclick: () => applyTag(t) }, t || 'Todas'));
+  const tagbar = h('nav', { class: 'tagbar', ariaLabel: 'Filtrar por tag', 'data-testid': 'tagbar', hidden: tagList.length === 0 }, ...tagBtns);
   const acervoEl = h('div', { class: 'acervo', 'data-testid': 'acervo' },
-      shelfCanvas, header, rowsEl, veil, heroCanvas, artView, sheet, modes, peekTab);
+      shelfCanvas, header, tagbar, rowsEl, veil, heroCanvas, artView, sheet, modes, peekTab);
   if (calm) acervoEl.classList.add('calm');
   root.append(acervoEl);
   groupRows();
@@ -170,12 +186,14 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     return { x: r.left + r.width / 2, y: r.bottom - hpx / 2 - 5 };
   }
   function placeAll() {
-    const first = slots[0]?.el.getBoundingClientRect();
+    const vis = new Set(shown());
+    const first = shown()[0]?.el.getBoundingClientRect();
     if (first) {
       const mw = Math.max(...drops.map((d) => d.w * 0.1)), mh = Math.max(...drops.map((d) => d.h * 0.1));
       k = Math.min((first.width * 0.8) / (mw * A.ppc), (first.height * 0.86) / (mh * A.ppc));
     }
     for (const s of slots) {
+      if (!vis.has(s)) continue;
       if (!s.box) {
         // silhueta do esqueleto com o tamanho aproximado da caixa (vista a -0,4 rad)
         const d = s.drop, pw = (d.w * Math.cos(0.4) + d.d * Math.sin(0.4)) * 0.1 * k * A.ppc;
@@ -288,8 +306,14 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
 
   /** A folha é uma ficha: título e data em cima; "dentro da caixa" e a ficha técnica (medidas, abertura, acabamento…) embaixo. */
   function fillSheet(d: Drop) {
+    sheet.scrollTop = 0;   // a ficha anterior pode ter ficado rolada
     titleEl.textContent = d.name;
-    metaEl.replaceChildren(...[d.subtitle, fmtDate(d.date)].filter(Boolean).map((t) => h('span', {}, t)));
+    metaEl.replaceChildren(...[d.subtitle, fmtDate(d.date)].filter(Boolean).map((t) => h('span', {}, t)),
+      ...(d.status === 'soldout' || d.status === 'soon' ? [h('span', { class: `badge ${d.status}` }, STATUS_LABEL[d.status])] : []));
+    taglineEl.textContent = d.tagline ? `“${d.tagline}”` : ''; taglineEl.hidden = !d.tagline;
+    conceptEl.textContent = d.concept ?? ''; conceptEl.classList.remove('open');
+    aboutBox.hidden = !d.concept; conceptMore.hidden = (d.concept?.length ?? 0) <= 150; conceptMore.textContent = 'Ler mais'; conceptMore.ariaExpanded = 'false';
+    const store = safeUrl(d.storeUrl); storeLink.hidden = !store; if (store) storeLink.href = store;
     itemsEl.replaceChildren(...d.items.map((it) => h('li', {}, it)));
     itemsBox.hidden = !d.items.length;
     const dot = (hex: string, label: string) => h('i', { class: 'sw', style: `background:${hex}`, title: `${label} ${hex}`, role: 'img', 'aria-label': `${label} ${hex}` });
@@ -299,7 +323,8 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
       cell('Abertura', d.openMode === 'book' ? 'Livro (capa lateral)' : 'Tampa no topo'),
       cell('Acabamento', FINISH[d.finish]),
       cell('Cores', h('span', { class: 'sw-row' }, dot(d.inner, 'Interior'), dot(d.tissue, 'Papel de seda'))),
-      cell('Artista', d.artist || null, true),
+      cell('Status', d.status ? STATUS_LABEL[d.status] : null),
+      cell('Artista', d.artist || null),
       cell('Tags', d.tags.length ? h('span', { class: 'tags' }, ...d.tags.map((t) => h('span', { class: 'tag' }, t))) : null, true),
     ];
     specsEl.replaceChildren(...cells.filter((c): c is HTMLDivElement => !!c));
@@ -315,6 +340,19 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     openBtn.ariaLabel = on ? 'Fechar tampa' : 'Abrir tampa';
     openBtn.classList.toggle('on', on);
     peekLid.textContent = openBtn.textContent; peekLid.ariaLabel = openBtn.ariaLabel;
+  }
+
+  /** Filtra a prateleira por tag (tocar na tag ativa, ou em "Todas", mostra tudo de novo). */
+  function applyTag(t: string) {
+    if (current) return;
+    tagSel = t === tagSel ? '' : t;
+    tagBtns.forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.tag ?? '') === tagSel)));
+    const vis = new Set(shown());
+    for (const sl of slots) if (sl.box) sl.box.group.visible = vis.has(sl);
+    groupRows(true);
+    scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+    placeAll();
+    announce(tagSel ? `${vis.size} ${vis.size === 1 ? 'caixa' : 'caixas'} com a tag ${tagSel}` : 'Todas as caixas');
   }
 
   /* ---------- folha recolhida: só a caixa em tela ---------- */
@@ -465,7 +503,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     rx.t = 0.1; ry.t = calm ? 0 : -TAU;
     idleAt = performance.now() + 1900;
     veil.classList.add('on'); heroCanvas.classList.add('live'); acervoEl.classList.add('open'); acervoEl.dataset.open = s.drop.slug;
-    header.inert = rowsEl.inert = true; sheet.inert = false; modes.inert = false;
+    header.inert = rowsEl.inert = tagbar.inert = true; sheet.inert = false; modes.inert = false;
     setTimeout(() => {
       if (current !== s || closing) return;
       sheet.classList.add('in');
@@ -486,7 +524,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     if (!current || closing) return;
     closing = true; sheet.style.transform = ''; sheet.classList.remove('in', 'peek'); veil.classList.remove('on'); acervoEl.classList.remove('open');
     modes.inert = true; peekTab.hidden = true; resetView(true);
-    header.inert = rowsEl.inert = false;
+    header.inert = rowsEl.inert = tagbar.inert = false;
     if (sheet.contains(document.activeElement) || document.activeElement === sheet) current.el.focus({ preventScroll: true });
     sheet.inert = true;
     setLidUi(false); lid.t = 0;
@@ -527,11 +565,12 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     // setas giram a caixa aberta (teclado)
     else if (!current && /^(Arrow(Left|Right|Up|Down)|Home|End)$/.test(e.key)) {
       // setas navegam entre as caixas da prateleira (grade de --c colunas)
-      const i = slots.findIndex((s) => s.el === document.activeElement);
+      const vis = shown();
+      const i = vis.findIndex((s) => s.el === document.activeElement);
       if (i < 0) return;
-      const j = e.key === 'Home' ? 0 : e.key === 'End' ? slots.length - 1
+      const j = e.key === 'Home' ? 0 : e.key === 'End' ? vis.length - 1
         : i + ({ ArrowLeft: -1, ArrowRight: 1, ArrowUp: -cols, ArrowDown: cols } as Record<string, number>)[e.key];
-      if (slots[j]) { slots[j].el.focus(); e.preventDefault(); }
+      if (vis[j]) { vis[j].el.focus(); e.preventDefault(); }
     }
     else if (current && !closing && mode === 'art' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !(e.target as HTMLElement).closest('input,textarea,select')) {
       stepFace(e.key === 'ArrowLeft' ? -1 : 1); e.preventDefault();

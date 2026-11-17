@@ -292,4 +292,51 @@ test.describe('Editor — funções @flow', () => {
     expect(blocked).toEqual([true, true, false]);
     void errors;
   });
+
+  test('frase, conceito, status, link da loja e sugestões de tags chegam à ficha', async ({ page, errors }) => {
+    await page.goto('/admin');
+    await name(page).fill('Ficha Completa');
+    await openMore(page);
+    await page.getByLabel('Frase de destaque').fill('Nada se esconde.');
+    await page.getByLabel('Conceito').fill('Um drop de teste com conceito.');
+    await stepTab(page, 3);
+    // sugestões: as já usadas nos outros drops e os temas da marca; um toque adiciona
+    await page.getByLabel('Tags').fill('ocu');
+    await page.getByRole('button', { name: '+ ocultismo' }).click();
+    await expect(page.getByLabel('Tags')).toHaveValue('ocultismo');
+    await expect(page.getByRole('button', { name: '+ ocultismo' })).toHaveCount(0);
+    await page.getByLabel('Tags').fill('ocultismo, ');
+    await page.getByRole('button', { name: '+ halloween' }).click();
+    await expect(page.getByLabel('Tags')).toHaveValue('ocultismo, halloween');
+    await page.getByRole('radio', { name: 'Esgotado' }).click();
+    await page.getByLabel('Link da loja').fill('https://www.alternazero.com/lancamentos/drop-teste/');
+    await page.getByLabel(/publicado/i).check();
+    await page.getByRole('button', { name: 'Salvar' }).click();
+    await expect(page).toHaveURL(/\/admin\/[0-9a-f-]{36}$/, { timeout: 30_000 });
+
+    await openAcervo(page, '/', 7);
+    await openBox(page, 'ficha-completa');
+    const sh = page.getByTestId('sheet');
+    await expect(sh).toContainText('Nada se esconde.');
+    await expect(sh).toContainText('Um drop de teste com conceito.');
+    await expect(sh.locator('.badge')).toHaveText('Esgotado');
+    await expect(sh.getByLabel('Ficha técnica').locator('.tag')).toHaveText(['ocultismo', 'halloween']);
+    await sh.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await expect(sh.getByTestId('store-link')).toHaveAttribute('href', 'https://www.alternazero.com/lancamentos/drop-teste/');
+    void errors;
+  });
+
+  test('link da loja inválido (javascript:) é recusado ao salvar', async ({ page, errors }) => {
+    await page.goto('/admin');
+    await name(page).fill('Link Ruim');
+    await stepTab(page, 3);
+    await page.getByLabel('Link da loja').fill('javascript:alert(1)');
+    await page.getByRole('button', { name: 'Salvar' }).click();
+    await expect(page.getByText(/começando com https/i)).toBeVisible();
+    await expect(page).toHaveURL(/\/admin$/);
+    await page.getByLabel('Link da loja').fill('https://www.alternazero.com/');
+    await page.getByRole('button', { name: 'Salvar' }).click();
+    await expect(page).toHaveURL(/\/admin\/[0-9a-f-]{36}$/, { timeout: 30_000 });
+    void errors;
+  });
 });

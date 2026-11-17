@@ -11,6 +11,7 @@ test.describe('Layout @layout', () => {
     await expectNoHorizontalScroll(page, 'acervo');
     await expectReadableText(page, 'acervo');
     await expectHitSize(page, page.locator('header button, header a'), 'cabeçalho');
+    await expectHitSize(page, page.locator('.tagbar button'), 'tags');
 
     // prateleira: slots com largura razoável e iguais por linha, conteúdo centralizado
     const boxes = await page.getByTestId('slot').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON()));

@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     const d = row.data;
     const title = d.name as string;
     const bits = [d.subtitle, ...(d.items ?? []).slice(0, 3)].filter(Boolean);
-    const desc = bits.length ? bits.join(' · ') : 'Veja, gire e abra a caixa em 3D.';
+    const desc = d.tagline || (bits.length ? bits.join(' · ') : 'Veja, gire e abra a caixa em 3D.');
     const img = `${base}/storage/v1/object/public/caixas/${row.id}/og.jpg?v=${encodeURIComponent(row.updated_at)}`;
     const page = `${url.origin}/c/${slug}`;
     const tags = `<title>${esc(title)}</title>

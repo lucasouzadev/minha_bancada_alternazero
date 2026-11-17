@@ -7,6 +7,13 @@ export const FACE_LABEL: Record<Face, string> = {
 export type Finish = 'matte' | 'satin' | 'gloss';
 export type OpenMode = 'top' | 'book';
 export type ArtMode = 'dieline' | 'faces';
+export type Status = 'available' | 'soldout' | 'soon';
+export const STATUS_LABEL: Record<Status, string> = { available: 'Disponível', soldout: 'Esgotado', soon: 'Em breve' };
+/** Só links http(s): o link da loja vem de campo digitado, nunca vira javascript:/data:. */
+export function safeUrl(u?: string): string | null {
+  if (!u) return null;
+  try { const x = new URL(u.trim()); return x.protocol === 'https:' || x.protocol === 'http:' ? x.href : null; } catch { return null; }
+}
 
 export interface Drop {
   id: string;
@@ -17,6 +24,10 @@ export interface Drop {
   artist: string;
   items: string[];    // o que vem na caixa
   tags: string[];
+  tagline?: string;   // frase de destaque
+  concept?: string;   // conceito / história do drop
+  status?: Status;    // disponível · esgotado · em breve
+  storeUrl?: string;  // página do drop na loja
   w: number; h: number; d: number; // mm: largura, altura, profundidade
   finish: Finish;
   openMode: OpenMode;

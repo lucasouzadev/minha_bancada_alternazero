@@ -105,9 +105,16 @@ html:has(.acervo){scrollbar-gutter:stable}
 .veil{position:fixed;inset:0;z-index:2;pointer-events:none;
   padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 .veil.on{pointer-events:auto}
-.shelf-gl,.top,.rows{transition:filter .45s var(--ease-out),opacity .45s var(--ease-out)}
+.shelf-gl,.top,.tagbar,.rows{transition:filter .45s var(--ease-out),opacity .45s var(--ease-out)}
 /* a prateleira inteira (caixas, tábuas, cabeçalho) recua junto quando uma caixa abre */
-.acervo.open .shelf-gl,.acervo.open .top,.acervo.open .rows{filter:blur(14px);opacity:.5}
+.acervo.open .shelf-gl,.acervo.open .top,.acervo.open .tagbar,.acervo.open .rows{filter:blur(14px);opacity:.5}
+
+/* filtro por tag */
+.tagbar{position:relative;z-index:2;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain;
+  padding:8px max(var(--pad),env(safe-area-inset-right)) 0 max(calc(var(--pad) + 4px),env(safe-area-inset-left))}
+.tagbar::-webkit-scrollbar{display:none}
+.tagbar .chip{background:rgba(22,22,26,.6)}
+@media (orientation:landscape) and (max-height:500px){.tagbar{padding-top:4px}}
 
 /* ===== folha / painel de detalhes =====
    --dock diz ao JS onde a folha está (bottom | side) para a caixa ocupar o espaço livre. */
@@ -180,6 +187,18 @@ html:has(.acervo){scrollbar-gutter:stable}
 .title{font:700 40px/.95 var(--display);text-transform:uppercase;letter-spacing:.01em;text-wrap:balance}
 .meta{display:flex;flex-wrap:wrap;gap:0 8px;color:var(--mut);margin-top:8px;font-size:14px;font-variant-numeric:tabular-nums}
 .meta>span+span::before{content:"·";margin-right:8px;color:var(--mut-2)}
+.tagline{margin-top:12px;font-size:15px;font-style:italic;line-height:1.4;color:var(--fg-2);text-wrap:balance}
+.concept{font-size:14px;line-height:1.55;color:var(--fg-2);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+.concept.open{-webkit-line-clamp:unset;display:block}
+.sec .txt.sm{min-height:36px;padding:0;margin-top:2px;color:var(--fg)}
+@media (pointer:coarse){.sec .txt.sm{min-height:44px}}
+.badge{padding:3px 10px;border-radius:999px;border:1px solid var(--line-2);font-size:12px;line-height:1.2;letter-spacing:.02em}
+.meta>.badge::before{content:none}
+.meta>span+.badge{margin-left:2px}
+.badge.soldout{color:var(--danger);border-color:rgba(255,107,134,.45)}
+.badge.soon{color:var(--warn);border-color:rgba(255,184,107,.45)}
+.store-link{margin-top:16px;width:100%}
+.store-link[hidden]{display:none}
 .sec{margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.07)}
 .sec[hidden]{display:none}
 .sec>.eyebrow{margin-bottom:10px}
@@ -460,7 +479,7 @@ dialog.sheet-dlg::backdrop{background:rgba(0,0,0,.6)}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
   .sheet.in>*{animation:none;opacity:1}
-  .acervo.open .shelf-gl,.acervo.open .top,.acervo.open .rows{filter:none;opacity:.25}
+  .acervo.open .shelf-gl,.acervo.open .top,.acervo.open .tagbar,.acervo.open .rows{filter:none;opacity:.25}
   .toast,.toast.in{transition:opacity .15s!important;transform:none!important}
   .slot:not(.empty)::before{animation:none}
   .sk-b{animation:none}

@@ -41,6 +41,53 @@ test.describe('Acervo — funções @flow', () => {
     void errors;
   });
 
+  test('filtro por tag: chips no topo filtram a prateleira', async ({ page, errors }) => {
+    await openAcervo(page);
+    const bar = page.getByTestId('tagbar');
+    await expect(bar).toBeVisible();
+    await expectHitSize(page, bar.getByRole('button'), 'tags');
+    await expect(bar.getByRole('button', { name: 'Todas' })).toHaveAttribute('aria-pressed', 'true');
+    await bar.getByRole('button', { name: 'ocultismo' }).click();
+    await expect(page.getByTestId('slot')).toHaveCount(2);                       // Ensaio e Relicário
+    await expect(bar.getByRole('button', { name: 'ocultismo' })).toHaveAttribute('aria-pressed', 'true');
+    // abrir uma caixa filtrada e fechar mantém o filtro
+    await openBox(page, 'ensaio');
+    await sheet(page).getByRole('button', { name: 'Fechar', exact: true }).click();
+    await expectClosed(page);
+    await expect(page.getByTestId('slot')).toHaveCount(2);
+    // tocar de novo na tag (ou em "Todas") mostra tudo
+    await bar.getByRole('button', { name: 'ocultismo' }).click();
+    await expect(page.getByTestId('slot')).toHaveCount(6);
+    await bar.getByRole('button', { name: 'anime' }).click();
+    await expect(page.getByTestId('slot')).toHaveCount(2);                       // Mutações e Cicatriz
+    await bar.getByRole('button', { name: 'Todas' }).click();
+    await expect(page.getByTestId('slot')).toHaveCount(6);
+    void errors;
+  });
+
+  test('ficha com frase, conceito, status e link da loja; a folha reabre no topo', async ({ page, errors }) => {
+    await openAcervo(page);
+    await openBox(page, 'mutacoes');
+    const sh = sheet(page);
+    await expect(sh).toContainText('Você pode correr, mas não pode se esconder.');
+    await expect(sh).toContainText('Especial de Halloween');
+    const link = sh.getByTestId('store-link');
+    await sh.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute('href', 'https://www.alternazero.com/lancamentos/drop-mutacoes/');
+    await expect(link).toHaveAttribute('target', '_blank');
+    expect(await link.getAttribute('rel')).toContain('noopener');
+    await page.keyboard.press('Escape').catch(() => {});
+    await sh.getByRole('button', { name: 'Fechar', exact: true }).click().catch(() => {});
+    await expectClosed(page);
+    // outra caixa: selo de esgotado, sem link, e a folha começa no topo (não herda a rolagem)
+    await openBox(page, 'cicatriz');
+    await expect(sh.locator('.badge')).toHaveText('Esgotado');
+    await expect(sh.getByTestId('store-link')).toBeHidden();
+    await expect(sh.getByRole('heading')).toBeInViewport();
+    void errors;
+  });
+
   test('botão Abrir alterna a tampa', async ({ page, errors }) => {
     await openAcervo(page);
     await openBox(page, 'ensaio');
