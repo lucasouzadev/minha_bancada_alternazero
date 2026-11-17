@@ -50,11 +50,30 @@ async function loginGate(root: HTMLElement): Promise<boolean> {
   return false;
 }
 
+/** Casca do editor no tamanho real, mostrada na hora (antes: tela preta enquanto login e dados chegavam). */
+function skeleton() {
+  const b = (cls: string) => h('span', { class: `sk-b ${cls}` });
+  const fieldSk = () => h('span', { class: 'sk-field' }, b('sk-lbl'), b('sk-in'));
+  return h('div', { class: 'admin sk', 'aria-busy': 'true' },
+    h('aside', { class: 'panel' },
+      h('p', { class: 'sr-only', role: 'status' }, 'Carregando o editor…'),
+      h('div', { class: 'panel-top' }, b('sk-btn'), b('sk-sel')),
+      h('div', { class: 'panel-head' }, b('sk-h')),
+      h('section', { class: 'sect' }, b('sk-eyebrow'), fieldSk(), h('div', { class: 'grid2' }, fieldSk(), fieldSk()), h('div', { class: 'grid2' }, fieldSk(), fieldSk())),
+      h('section', { class: 'sect' }, b('sk-eyebrow'), h('div', { class: 'grid3' }, fieldSk(), fieldSk(), fieldSk()))),
+    h('div', { class: 'preview' }, h('div', { class: 'stage' })));
+}
+
 export async function adminPage(root: HTMLElement, id?: string) {
-  if (!(await loginGate(root))) return;
+  const sk = skeleton();
+  root.append(sk);
+  if (!(await loginGate(root))) { sk.remove(); return; }
   const all = await listDrops();
   const drop: Drop = (id && (await getDrop(id))) || newDrop();
-  const isNew = !all.some((d) => d.id === drop.id);
+  if (!sk.isConnected) return; // trocou de rota enquanto carregava: não monta uma tela órfã (WebGL incluso)
+  let isNew = !all.some((d) => d.id === drop.id);
+  /** Recolocam nos campos o valor do drop (ver "pageshow" abaixo). */
+  const binders: (() => void)[] = [];
   let slugTouched = !!drop.slug;
 
   const previewHost = h('div', { class: 'stage' });
@@ -92,7 +111,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
   // ---------- campos ----------
   const nameErr = h('p', { class: 'field-err', id: 'err-name', hidden: true });
   const text = (label: string, key: 'name' | 'subtitle' | 'artist', ph = '') => {
-    const i = h('input', { name: key, value: drop[key], placeholder: ph, autocomplete: 'off', oninput: () => {
+    const i = h('input', { name: `drop-${key}`, value: drop[key], placeholder: ph, autocomplete: 'off', oninput: () => {
       drop[key] = i.value;
       if (key === 'name') {
         if (!slugTouched) { drop.slug = slugify(i.value); slug.value = drop.slug; }
@@ -100,27 +119,35 @@ export async function adminPage(root: HTMLElement, id?: string) {
       }
     } });
     if (key === 'name') { i.setAttribute('aria-describedby', 'err-name'); nameIn = i; }
+    binders.push(() => { i.value = drop[key]; });
     return field(label, i);
   };
   let nameIn!: HTMLInputElement;
   const slug = h('input', { name: 'slug', value: drop.slug, placeholder: 'mutacoes', autocomplete: 'off', autocapitalize: 'off', spellcheck: false, oninput: () => { slugTouched = true; drop.slug = slugify(slug.value); } });
+  binders.push(() => { slug.value = drop.slug; });
+  /** Medida em mm: rótulo curto (não quebra em 2 linhas no celular) e a unidade dentro do campo. */
   const num = (label: string, key: 'w' | 'h' | 'd') => {
-    const i = h('input', { name: key, type: 'number', inputMode: 'numeric', min: 10, max: 1000, step: 1, value: String(drop[key]), oninput: () => { drop[key] = Math.max(10, +i.value || 10); schedule(); } });
-    return field(label, i);
+    const i = h('input', { name: key, type: 'number', inputMode: 'numeric', min: 10, max: 1000, step: 1, value: String(drop[key]), ariaLabel: `${label} (mm)`,
+      oninput: () => { drop[key] = Math.max(10, +i.value || 10); schedule(); } });
+    binders.push(() => { i.value = String(drop[key]); });
+    return h('label', { class: 'field' }, h('span', {}, label), h('span', { class: 'unit', 'data-unit': 'mm' }, i));
   };
   const color = (label: string, key: 'inner' | 'tissue') => {
     const code = h('code', { 'aria-hidden': 'true' }, drop[key]);
     const i = h('input', { name: key, type: 'color', value: drop[key], oninput: () => { drop[key] = i.value; code.textContent = i.value; schedule(); } });
+    binders.push(() => { i.value = drop[key]; code.textContent = drop[key]; });
     return h('label', { class: 'field' }, h('span', {}, label), h('div', { class: 'swatch' }, i, code));
   };
   const select = <T extends string>(label: string, key: 'finish' | 'openMode' | 'artMode', opts: [T, string][], after?: () => void) => {
     const s = h('select', { name: key, onchange: () => { (drop as any)[key] = s.value; after?.(); schedule(); } },
       ...opts.map(([v, l]) => h('option', { value: v, selected: (drop as any)[key] === v }, l)));
+    binders.push(() => { s.value = (drop as any)[key]; });
     return field(label, s);
   };
   const itemsTa = h('textarea', { name: 'items', rows: 3, placeholder: 'Uma por linha', value: drop.items.join('\n'), oninput: () => { drop.items = itemsTa.value.split('\n').map((s) => s.trim()).filter(Boolean); } });
   const tagsIn = h('input', { name: 'tags', value: drop.tags.join(', '), placeholder: 'horror, anime, ocultismo', autocomplete: 'off', oninput: () => { drop.tags = tagsIn.value.split(',').map((s) => s.trim()).filter(Boolean); } });
   const dateIn = h('input', { name: 'date', type: 'date', value: drop.date, oninput: () => { drop.date = dateIn.value; } });
+  binders.push(() => { itemsTa.value = drop.items.join('\n'); tagsIn.value = drop.tags.join(', '); dateIn.value = drop.date; });
 
   // ---------- arte ----------
   const artBox = h('div', { class: 'artbox' });
@@ -162,7 +189,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
         filePicker('Arte planificada (faca em cruz)', 'dieline'),
         h('p', { class: 'hint' }, `Proporção da arte: ${r.totalW} × ${r.totalH} mm, em qualquer resolução.`),
         h('div', { class: 'row2' },
-          h('button', { class: 'ghost sm', type: 'button', onclick: () => templateCanvas(drop.w, drop.h, drop.d).toBlob((b) => download(b!, `gabarito-${drop.slug || 'caixa'}-${drop.w}x${drop.h}x${drop.d}.png`)) }, icon('download', 18), 'Baixar gabarito'),
+          h('button', { class: 'ghost sm', type: 'button', onclick: () => saveImage(templateCanvas(drop.w, drop.h, drop.d), `gabarito-${drop.slug || 'caixa'}-${drop.w}x${drop.h}x${drop.d}.png`) }, icon('download', 18), 'Baixar gabarito'),
           h('button', { class: 'ghost sm', type: 'button', onclick: async (e: Event) => {
             const b = e.currentTarget as HTMLButtonElement; b.disabled = true;
             drop.art.dieline = await demoDieline(drop.w, drop.h, drop.d, drop.name || 'Drop', true, Date.now() % 1000);
@@ -173,14 +200,37 @@ export async function adminPage(root: HTMLElement, id?: string) {
     }
   }
   renderArt();
-  const dimIn = [num('Largura (mm)', 'w'), num('Altura (mm)', 'h'), num('Profundidade (mm)', 'd')];
+  const dimIn = [num('Largura', 'w'), num('Altura', 'h'), num('Profundidade', 'd')];
   let artT = 0;
   dimIn.forEach((f) => f.addEventListener('input', () => { clearTimeout(artT); artT = window.setTimeout(renderArt, 120); }));
 
   const stateChip = h('span', { class: 'state' });
   const renderState = () => { stateChip.textContent = drop.published ? 'Publicado' : 'Rascunho'; stateChip.classList.toggle('live', drop.published); };
   const pubIn = h('input', { type: 'checkbox', name: 'published', checked: drop.published, onchange: () => { drop.published = pubIn.checked; renderState(); } });
+  binders.push(() => { pubIn.checked = drop.published; renderState(); });
   renderState();
+
+  // Novo × edição: o mesmo DOM serve aos dois (salvar um drop novo não recria a tela)
+  const heading = h('h2', {});
+  const picker = h('select', { ariaLabel: 'Escolher drop', onchange: () => go(picker.value ? `/admin/${picker.value}` : '/admin') },
+    h('option', { value: '' }, 'Novo drop'),
+    ...all.map((d) => h('option', { value: d.id, selected: d.id === drop.id }, d.name)));
+  const viewLink = h('a', { class: 'ghost', href: '/', 'data-link': true }, 'Ver página');
+  const delBtn = h('button', { class: 'danger', type: 'button', onclick: async () => {
+    if (!confirm(`Excluir "${drop.name}"? Isso não pode ser desfeito.`)) return;
+    await deleteDrop(drop.id); toast('Drop excluído'); go('/admin');
+  } }, icon('trash', 18), 'Excluir');
+  const renderMode = () => {
+    heading.textContent = isNew ? 'Novo drop' : 'Editar drop';
+    viewLink.hidden = delBtn.hidden = isNew;
+    viewLink.href = `/c/${encodeURIComponent(drop.slug)}?preview`;
+    if (!isNew) {
+      let opt = [...picker.options].find((o) => o.value === drop.id);
+      if (!opt) { opt = h('option', { value: drop.id }, drop.name); picker.options[0].after(opt); }
+      opt.textContent = drop.name; picker.value = drop.id;
+    }
+  };
+  renderMode();
 
   const saveBtn = h('button', { class: 'primary', type: 'button' }, 'Salvar');
   let saving = false;
@@ -197,7 +247,8 @@ export async function adminPage(root: HTMLElement, id?: string) {
       await saveDrop(drop, REMOTE ? await makeOg(drop) : undefined);
     } catch (e) { console.error(e); done(); toast(saveError(e), 'error'); return; }
     done(); slug.value = drop.slug; toast('Salvo', 'ok');
-    if (isNew) go(`/admin/${drop.id}`);
+    if (isNew) { isNew = false; history.replaceState({}, '', `/admin/${drop.id}`); }
+    renderMode();
   };
   saveBtn.onclick = save;
   const onKey = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); } };
@@ -220,10 +271,8 @@ export async function adminPage(root: HTMLElement, id?: string) {
     h('aside', { class: 'panel' },
       h('div', { class: 'panel-top' },
         h('a', { class: 'ghost sm', href: '/', 'data-link': true }, icon('back', 18), 'Acervo'),
-        h('select', { ariaLabel: 'Escolher drop', onchange: (e: Event) => { const v = (e.target as HTMLSelectElement).value; go(v ? `/admin/${v}` : '/admin'); } },
-          h('option', { value: '' }, 'Novo drop'),
-          ...all.map((d) => h('option', { value: d.id, selected: d.id === drop.id }, d.name)))),
-      h('div', { class: 'panel-head' }, h('h2', {}, isNew ? 'Novo drop' : 'Editar drop'), stateChip),
+        picker),
+      h('div', { class: 'panel-head' }, heading, stateChip),
       sect('Identidade',
         text('Nome', 'name', 'Mutações'), nameErr,
         h('div', { class: 'grid2' }, text('Subtítulo', 'subtitle', 'Drop 07'), text('Artista', 'artist')),
@@ -240,22 +289,57 @@ export async function adminPage(root: HTMLElement, id?: string) {
       sect('Ficha',
         field('Dentro da caixa', itemsTa), field('Tags', tagsIn),
         h('label', { class: 'switch' }, pubIn, h('span', {}, h('b', {}, 'Publicado'), h('small', {}, 'Aparece no acervo e no link')))),
-      h('div', { class: 'actions' },
-        saveBtn,
-        !isNew && h('a', { class: 'ghost', href: `/c/${drop.slug}?preview`, 'data-link': true }, 'Ver página'),
-        !isNew && h('button', { class: 'danger', type: 'button', onclick: async () => { if (confirm(`Excluir "${drop.name}"? Isso não pode ser desfeito.`)) { await deleteDrop(drop.id); toast('Drop excluído'); go('/admin'); } } }, icon('trash', 18), 'Excluir'))),
+      h('div', { class: 'actions' }, saveBtn, viewLink, delBtn)),
     h('div', { class: 'preview', 'data-testid': 'preview' }, previewHost, h('div', { class: 'stage-bar' }, lidBtn, grow)));
-  root.append(adminEl);
+  sk.replaceWith(adminEl);
+
+  // Teclado aberto (toque): a prévia e a barra de ações deixam de ser fixas e rolam junto com o formulário.
+  // Antes, no iPhone, a barra "Salvar" ficava presa atrás da barra do teclado e a prévia tomava o topo,
+  // sobrando pouquíssimo espaço para o campo. Sem mudança de layout: só deixam de "grudar".
+  const coarse = matchMedia('(pointer: coarse)');
+  const NO_KB = new Set(['checkbox', 'radio', 'color', 'file', 'date', 'range', 'button', 'submit']);
+  const typesText = (el: Element | null) => el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !NO_KB.has(el.type));
+  let typT = 0;
+  adminEl.addEventListener('focusin', (e) => {
+    if (!coarse.matches || !typesText(e.target as Element)) return;
+    clearTimeout(typT); adminEl.classList.add('typing');
+  });
+  // pequena espera: ao pular de um campo para o próximo (setas do teclado do iOS) nada pisca
+  adminEl.addEventListener('focusout', () => {
+    clearTimeout(typT);
+    typT = window.setTimeout(() => { if (!typesText(document.activeElement)) adminEl.classList.remove('typing'); }, 150);
+  });
+
+  // Voltando à página pelo cache do navegador (ex.: depois de "Ver" o gabarito no iPhone), o Safari apaga
+  // os campos com autocomplete=off, mas o drop em memória continua com os valores: recoloca-os nos campos.
+  const onShow = (e: PageTransitionEvent) => { if (e.persisted) binders.forEach((f) => f()); };
+  addEventListener('pageshow', onShow);
 
   refresh();
   return () => {
-    clearTimeout(timer); clearTimeout(artT); removeEventListener('keydown', onKey);
+    clearTimeout(timer); clearTimeout(artT); clearTimeout(typT); removeEventListener('keydown', onKey); removeEventListener('pageshow', onShow);
     urls.forEach((u) => URL.revokeObjectURL(u));
     stage.dispose(); box?.dispose(); Object.values(texs).forEach((t) => t!.dispose());
   };
 }
 
 const field = (label: string, el: HTMLElement) => h('label', { class: 'field' }, h('span', {}, label), el);
+/**
+ * Celular/tablet: folha de compartilhar do sistema (Salvar imagem / Arquivos), sem sair do editor.
+ * No iPhone o download comum abria a imagem no lugar da página. Gerado de forma síncrona para manter o
+ * "gesto do usuário" que o navigator.share exige. Computador: download normal.
+ */
+function saveImage(canvas: HTMLCanvasElement, name: string) {
+  const bin = atob(canvas.toDataURL('image/png').split(',')[1]);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const file = new File([bytes], name, { type: 'image/png' });
+  if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
+    navigator.share({ files: [file], title: name }).catch((e) => { if (e?.name !== 'AbortError') download(file, name); });
+    return;
+  }
+  download(file, name);
+}
 function download(b: Blob, name: string) {
   const a = h('a', { href: URL.createObjectURL(b), download: name }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }

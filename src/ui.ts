@@ -14,6 +14,17 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<s
 
 export const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/**
+ * Última forma de interação (teclado ou ponteiro), em <html data-input>.
+ * O foco devolvido por código (ex.: ao fechar a caixa) só mostra anel quando a pessoa navega pelo teclado;
+ * sem isso o Safari/Chrome desenham o contorno depois de um toque.
+ */
+const docEl = document.documentElement;
+docEl.dataset.input = 'pointer';
+addEventListener('keydown', (e) => { if (!e.metaKey && !e.ctrlKey && !e.altKey) docEl.dataset.input = 'key'; }, true);
+addEventListener('pointerdown', () => { docEl.dataset.input = 'pointer'; }, true);
+export const usingKeyboard = () => docEl.dataset.input === 'key';
+
 /* ---------- avisos (toast) ---------- */
 export type ToastKind = 'info' | 'ok' | 'error';
 let tray: HTMLElement | null = null;

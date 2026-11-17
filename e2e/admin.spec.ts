@@ -1,4 +1,4 @@
-import { test, expect, openAcervo, openBox } from './helpers';
+import { test, expect, openAcervo, openBox, isTouch } from './helpers';
 
 test.describe('Editor — funções @flow', () => {
   test.describe.configure({ timeout: 240_000 });
@@ -65,6 +65,63 @@ test.describe('Editor — funções @flow', () => {
     await pick.selectOption(opt!);
     await expect(page.getByLabel('Nome', { exact: true })).toHaveValue('Ensaio');
     await expect(page.getByLabel('Profundidade (mm)')).toHaveValue('90');
+    void errors;
+  });
+
+  test('salvar um drop novo atualiza a tela no lugar (sem tela preta)', async ({ page, errors }) => {
+    await page.goto('/admin');
+    await page.getByLabel('Nome', { exact: true }).fill('No Lugar E2E');
+    await expect(page.getByRole('button', { name: 'Excluir' })).toBeHidden();
+    await page.locator('.admin').evaluate((el) => { (el as any).__mark = 1; });
+    await page.getByRole('button', { name: 'Salvar' }).click();
+    await expect(page).toHaveURL(/\/admin\/[0-9a-f-]{36}$/, { timeout: 30_000 });
+    await expect(page.getByRole('heading', { name: /editar drop/i })).toBeVisible();
+    expect(await page.locator('.admin').evaluate((el) => (el as any).__mark), 'mesma tela, não recriada').toBe(1);
+    await expect(page.getByRole('button', { name: 'Excluir' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Ver página' })).toHaveAttribute('href', '/c/no-lugar-e2e?preview');
+    await expect(page.locator('select').first()).toHaveValue(page.url().split('/').pop()!);
+    await expect(page.locator('select').first().locator('option:checked')).toHaveText('No Lugar E2E');
+    void errors;
+  });
+
+  test('voltar pelo cache do navegador recoloca os valores nos campos', async ({ page, errors }) => {
+    await page.goto('/admin');
+    await page.getByLabel('Nome', { exact: true }).fill('Horror');
+    await page.getByLabel('Tags').fill('anime, terror');
+    // o que o Safari faz com campos autocomplete=off ao restaurar a página do cache
+    await page.evaluate(() => {
+      document.querySelectorAll<HTMLInputElement>('input[autocomplete="off"]').forEach((i) => { i.value = ''; });
+      dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    });
+    await expect(page.getByLabel('Nome', { exact: true })).toHaveValue('Horror');
+    await expect(page.getByLabel('Tags')).toHaveValue('anime, terror');
+    await expect(page.getByLabel('Link (slug)')).toHaveValue('horror');
+    void errors;
+  });
+
+  test('medidas alinhadas, com a unidade dentro do campo', async ({ page, errors }) => {
+    await page.goto('/admin');
+    const tops = await Promise.all(['Largura (mm)', 'Altura (mm)', 'Profundidade (mm)'].map(async (l) => (await page.getByLabel(l).boundingBox())!.y));
+    expect(Math.max(...tops) - Math.min(...tops), 'campos de medida na mesma linha').toBeLessThanOrEqual(1);
+    void errors;
+  });
+
+  test('teclado aberto (toque): prévia e Salvar deixam de grudar e voltam depois', async ({ page, errors }) => {
+    test.skip(!(await isTouch(page)), 'só em toque');
+    await page.goto('/admin');
+    const admin = page.locator('.admin');
+    const pos = (sel: string) => page.locator(sel).evaluate((el) => getComputedStyle(el).position);
+    await page.getByLabel('Nome', { exact: true }).focus();
+    await expect(admin).toHaveClass(/typing/);
+    expect(await pos('.actions')).toBe('relative');
+    if ((page.viewportSize()!.width) < 1024) expect(await pos('.preview')).toBe('relative');
+    // pular para o próximo campo não pisca
+    await page.getByLabel('Subtítulo').focus();
+    await expect(admin).toHaveClass(/typing/);
+    // seletor/data/interruptor não abrem teclado
+    await page.getByLabel(/publicado/i).focus();
+    await expect(admin).not.toHaveClass(/typing/);
+    expect(await pos('.actions')).toBe('sticky');
     void errors;
   });
 });

@@ -6,7 +6,7 @@ import { collectionUrl, getOwned, toggleOwned } from '../collection';
 import { listDrops } from '../db';
 import { GL } from '../gl';
 import type { Drop } from '../types';
-import { announce, fmtDate, h, icon, reducedMotion, share, toast } from '../ui';
+import { announce, fmtDate, h, icon, reducedMotion, share, toast, usingKeyboard } from '../ui';
 
 export interface Page { cleanup(): void; sync?(): void }
 
@@ -326,7 +326,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     const up = (on: boolean) => { if (!calm) s.lift.t = on ? 1 : 0; };
     s.el.addEventListener('pointerenter', (e) => e.pointerType === 'mouse' && up(true));
     s.el.addEventListener('pointerleave', () => up(false));
-    s.el.addEventListener('focus', () => s.el.matches(':focus-visible') && up(true));
+    s.el.addEventListener('focus', () => usingKeyboard() && s.el.matches(':focus-visible') && up(true));
     s.el.addEventListener('blur', () => up(false));
   });
   slots.forEach((s) => s.el.addEventListener('click', () => {

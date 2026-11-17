@@ -132,4 +132,20 @@ test.describe('Acervo — funções @flow', () => {
     await expect(slot(page, 'ensaio')).toBeVisible();
     void errors;
   });
+
+  test('fechar pelo toque/clique não deixa contorno de foco no slot', async ({ page, errors }) => {
+    await openAcervo(page);
+    await openBox(page, 'mutacoes');
+    await sheet(page).getByRole('button', { name: 'Fechar', exact: true }).click();
+    await expectClosed(page);
+    const s = slot(page, 'mutacoes');
+    await expect(s).toBeFocused();
+    expect(await s.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('none');
+    // pelo teclado o anel continua
+    await page.keyboard.press('ArrowRight');
+    await expect(slot(page, 'mutacoes')).not.toBeFocused();
+    const focusedOutline = await page.evaluate(() => getComputedStyle(document.activeElement!).outlineStyle);
+    expect(focusedOutline).not.toBe('none');
+    void errors;
+  });
 });
