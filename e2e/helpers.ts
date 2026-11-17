@@ -17,6 +17,7 @@ export const test = base.extend<{ errors: string[] }>({
   },
 });
 export { expect };
+export type { Page, Locator };
 
 export const isTouch = (page: Page) => page.evaluate(() => matchMedia('(pointer: coarse)').matches);
 

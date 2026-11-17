@@ -28,6 +28,19 @@ export async function remoteList(): Promise<Drop[]> {
   return all.sort((a, b) => b.date.localeCompare(a.date));
 }
 
+/** Só os dados (sem baixar as imagens): para listas e seletores. `art` vem vazio. */
+export async function remoteMeta(): Promise<Drop[]> {
+  const { data, error } = await sb.from('drops').select('*');
+  if (error) throw error;
+  return (data ?? []).map((row: any) => ({ ...row.data, id: row.id, slug: row.slug, published: row.published, art: {}, updatedAt: Date.parse(row.updated_at) } as Drop))
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+export async function remoteGet(id: string): Promise<Drop | undefined> {
+  const { data, error } = await sb.from('drops').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data ? rowToDrop(data) : undefined;
+}
+
 export async function remoteSave(drop: Drop, og?: Blob): Promise<Drop> {
   const paths: Record<string, string> = {};
   for (const [k, blob] of Object.entries(drop.art) as [string, Blob][]) {

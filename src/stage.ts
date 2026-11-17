@@ -61,9 +61,12 @@ export function createStage(host: HTMLElement, opts: { autoRotate?: boolean } = 
   const ticks: ((dt: number) => void)[] = [];
 
   const resize = () => {
-    const w = host.clientWidth || 1, h = host.clientHeight || 1;
+    if (!host.clientWidth || !host.clientHeight) return; // palco escondido (display:none): mantém o tamanho, volta pronto
+    const w = host.clientWidth, h = host.clientHeight;
     renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
     if (current) fit();
+    // setSize apaga o canvas; sem redesenhar aqui o próximo paint sai em branco (era o "pisca" a cada rolagem/teclado)
+    controls.update(); renderer.render(scene, camera);
   };
   const fit = () => {
     const dist = frame(camera, curSize, camera.aspect);

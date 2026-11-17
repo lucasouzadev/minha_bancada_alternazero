@@ -5,6 +5,13 @@ Acervo de drops com a caixa 3D gerada a partir da arte (faca planificada) e das 
 - `/` prateleira (coleção) · `/c/:slug` caixa aberta · `/colecao?c=a,b` coleção compartilhada · `/admin` editor
 - Vite + TypeScript + three.js (sem framework). Produção: https://caixas-3d.vercel.app
 
+## Editor (`/admin`)
+
+Criação em 4 passos — **Identidade → Caixa → Arte → Publicar**; o que é raro (subtítulo, artista, data, link, acabamento, cores) fica em "Mais opções".
+A tela ocupa só a área visível (acima do teclado) e nunca rola inteira; a prévia 3D aparece em Caixa e Arte e some enquanto você digita.
+Rascunho automático no aparelho (recarregar não perde nada), "Duplicar drop" e medidas prontas.
+No iPhone: Compartilhar → **Adicionar à Tela de Início** abre o app em tela cheia (sem a barra do Safari).
+
 ## Rodar
 
 ```bash

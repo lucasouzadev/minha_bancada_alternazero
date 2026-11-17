@@ -1,20 +1,24 @@
 import { demoDieline } from './art';
-import { REMOTE, remoteDelete, remoteList, remoteSave } from './remote';
+import { REMOTE, remoteDelete, remoteGet, remoteList, remoteMeta, remoteSave } from './remote';
 import type { Drop } from './types';
 
-const STORE = 'drops';
+const STORE = 'drops', DRAFTS = 'drafts';
 function open(): Promise<IDBDatabase> {
   return new Promise((res, rej) => {
-    const r = indexedDB.open('caixa3d', 1);
-    r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: 'id' });
+    const r = indexedDB.open('caixa3d', 2);
+    r.onupgradeneeded = () => {
+      const db = r.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(DRAFTS)) db.createObjectStore(DRAFTS); // rascunhos do editor (com as imagens), chave = "new" ou id
+    };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
   });
 }
-async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>, store = STORE): Promise<T> {
   const db = await open();
   return new Promise((res, rej) => {
-    const rq = fn(db.transaction(STORE, mode).objectStore(STORE));
+    const rq = fn(db.transaction(store, mode).objectStore(store));
     rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
   });
 }
@@ -28,8 +32,13 @@ export async function listDrops(): Promise<Drop[]> {
   const all = await run<Drop[]>('readonly', (s) => s.getAll());
   return all.sort((a, b) => b.date.localeCompare(a.date));
 }
+/** Lista leve para seletores e checagens: no servidor não baixa as imagens de cada drop. */
+export async function listDropMeta(): Promise<Drop[]> {
+  if (REMOTE) return remoteMeta();
+  return listDrops();
+}
 export async function getDrop(id: string) {
-  if (REMOTE) return (await remoteList()).find((d) => d.id === id);
+  if (REMOTE) return remoteGet(id);
   return run<Drop | undefined>('readonly', (s) => s.get(id));
 }
 export async function getBySlug(slug: string) { return (await listDrops()).find((d) => d.slug === slug); }
@@ -38,7 +47,7 @@ export async function deleteDrop(id: string) {
   await run('readwrite', (s) => s.delete(id));
 }
 export async function saveDrop(d: Drop, og?: Blob) {
-  const others = (await listDrops()).filter((x) => x.id !== d.id);
+  const others = (await listDropMeta()).filter((x) => x.id !== d.id);
   let slug = slugify(d.slug || d.name), n = 2;
   while (others.some((x) => x.slug === slug)) slug = `${slugify(d.slug || d.name)}-${n++}`;
   d.slug = slug; d.updatedAt = Date.now();
@@ -46,6 +55,12 @@ export async function saveDrop(d: Drop, og?: Blob) {
   await run('readwrite', (s) => s.put(d));
   return d;
 }
+/* Rascunho do editor: guardado no aparelho (inclui as imagens) e apagado ao salvar. */
+export type Draft = Omit<Drop, 'updatedAt'> & { savedAt: number; dup?: boolean };
+export const saveDraft = (key: string, d: Drop) => run('readwrite', (s) => s.put({ ...d, savedAt: Date.now() }, key), DRAFTS).catch(() => undefined);
+export const loadDraft = (key: string) => run<Draft | undefined>('readonly', (s) => s.get(key), DRAFTS).catch(() => undefined);
+export const clearDraft = (key: string) => run('readwrite', (s) => s.delete(key), DRAFTS).catch(() => undefined);
+
 export function newDrop(): Drop {
   return {
     id: crypto.randomUUID(), slug: '', name: '', subtitle: '', date: new Date().toISOString().slice(0, 10),
