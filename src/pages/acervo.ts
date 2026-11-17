@@ -26,7 +26,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   const shelfCanvas = h('canvas', { class: 'gl shelf-gl' });
   const heroCanvas = h('canvas', { class: 'gl hero-gl' });
   const veil = h('div', { class: 'veil' });
-  const count = h('span', { class: 'count' });
+  const count = h('span', { class: 'count', 'data-testid': 'count' });
   const rowsEl = h('main', { class: 'rows' });
 
   const slots: Slot[] = [];
@@ -35,7 +35,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     for (let j = i; j < i + 3; j++) {
       const d = drops[j];
       if (!d) { row.append(h('div', { class: 'slot empty' })); continue; }
-      const el = h('button', { class: 'slot', ariaLabel: d.name });
+      const el = h('button', { class: 'slot', ariaLabel: d.name, 'data-testid': 'slot', 'data-slug': d.slug });
       row.append(el); slots.push({ drop: d, el });
     }
     rowsEl.append(row);
@@ -44,22 +44,22 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   const ownBtn = h('button', { class: 'ico', ariaLabel: 'Tenho esta caixa' }, icon('mark'));
   const shareBtn = h('button', { class: 'ico', ariaLabel: 'Compartilhar' }, icon('share'));
   const closeBtn = h('button', { class: 'ico', ariaLabel: 'Fechar' }, icon('close'));
-  const openBtn = h('button', { class: 'pill' }, 'Abrir');
+  const openBtn = h('button', { class: 'pill', 'data-testid': 'lid' }, 'Abrir');
   const titleEl = h('h2', { class: 'title' });
   const metaEl = h('p', { class: 'meta' });
   const itemsEl = h('p', { class: 'items' });
-  const sheet = h('section', { class: 'sheet' },
+  const sheet = h('section', { class: 'sheet', 'data-testid': 'sheet', ariaLabel: 'Detalhes da caixa' },
     h('i', { class: 'grab' }),
     h('div', { class: 'acts' }, openBtn, h('span', { class: 'sp' }), isShared ? null : ownBtn, shareBtn, closeBtn),
     titleEl, metaEl, itemsEl);
 
-  const acervoEl = h('div', { class: 'acervo' },
+  const acervoEl = h('div', { class: 'acervo', 'data-testid': 'acervo' },
       shelfCanvas,
       h('header', { class: 'top' },
         h('div', { class: 'brand' }, h('b', {}, 'Acervo'), count),
         h('div', { class: 'row-r' },
           isShared ? h('a', { class: 'txt', href: '/', 'data-link': true }, 'Meu acervo') : null,
-          h('button', { class: 'ico', ariaLabel: 'Compartilhar coleção', onclick: () => share('Minha coleção', `${countOwned()} de ${drops.length} caixas`, collectionUrl(owned)) }, icon('share')),
+          h('button', { class: 'ico', ariaLabel: 'Compartilhar coleção', 'data-testid': 'share-collection', onclick: () => share('Minha coleção', `${countOwned()} de ${drops.length} caixas`, collectionUrl(owned)) }, icon('share')),
           h('a', { class: 'ico', href: '/admin', 'data-link': true, ariaLabel: 'Editor' }, icon('edit')))),
       rowsEl, veil, heroCanvas, sheet);
   root.append(acervoEl);
@@ -117,7 +117,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     s.box = buildBox({ ...s.drop, textures: s.tex });
     if (!owned.has(s.drop.slug)) dim(s.box, true);
     A.scene.add(s.box.group); placeAll();
-    s.el.classList.add('ready');
+    s.el.classList.add('ready'); s.el.dataset.state = 'ready';
   });
 
   /* ---------- herói ---------- */
@@ -165,7 +165,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     const e = endPose(s.drop);
     hx.t = e.x; hy.t = e.y; hs.t = sc; rx.t = 0.1; ry.t = -TAU;
     idleAt = performance.now() + 1900;
-    veil.classList.add('on'); heroCanvas.classList.add('live'); acervoEl.classList.add('open');
+    veil.classList.add('on'); heroCanvas.classList.add('live'); acervoEl.classList.add('open'); acervoEl.dataset.open = s.drop.slug;
     setTimeout(() => current === s && sheet.classList.add('in'), 140);
     // textura em alta, trocada quando chegar
     buildTextures(s.drop, B.renderer.capabilities.getMaxAnisotropy(), 2048).then((t) => {
@@ -191,7 +191,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     if (heroTex) { Object.values(heroTex).forEach((t) => t!.dispose()); heroTex = null; }
     s.box!.group.visible = true; dirtyA = true;
     heroCanvas.classList.remove('live'); document.body.classList.remove('locked');
-    current = null; closing = false; B.renderer.clear();
+    current = null; closing = false; B.renderer.clear(); delete acervoEl.dataset.open;
   }
 
   /* ---------- interações ---------- */

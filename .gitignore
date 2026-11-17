@@ -3,3 +3,6 @@ dist
 .env
 .env.local
 .vercel
+dist-e2e
+e2e-report
+e2e-results

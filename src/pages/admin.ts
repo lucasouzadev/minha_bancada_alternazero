@@ -12,15 +12,32 @@ import { makeOg } from '../og';
 
 export const FINISH_LABEL: Record<Finish, string> = { matte: 'Fosco', satin: 'Acetinado', gloss: 'Brilho (verniz)' };
 
+const NO_EDITOR = 'Esta conta entrou, mas ainda não é editora. Inclua o e-mail na tabela admins do Supabase.';
+const isEditor = async () => (await sb.rpc('is_admin')).data === true;
+export function saveError(e: any): string {
+  const m = String(e?.message ?? e ?? '');
+  if (e?.code === '42501' || /row-level security|unauthori[sz]ed|403/i.test(m)) return 'Sem permissão de editor para salvar.';
+  return m ? `Não foi possível salvar: ${m.slice(0, 90)}` : 'Não foi possível salvar.';
+}
+
 async function loginGate(root: HTMLElement): Promise<boolean> {
   if (!REMOTE) return true;
-  if ((await sb.auth.getSession()).data.session) return true;
-  const email = h('input', { type: 'email', placeholder: 'e-mail', autocomplete: 'username' });
-  const pass = h('input', { type: 'password', placeholder: 'senha', autocomplete: 'current-password' });
-  const msg = h('small', { class: 'warn' });
+  const msg = h('small', { class: 'warn', role: 'alert' });
+  if ((await sb.auth.getSession()).data.session) {
+    if (await isEditor()) return true;
+    msg.textContent = NO_EDITOR;
+    root.append(h('div', { class: 'login' }, h('h2', {}, 'Editor'), msg,
+      h('button', { class: 'ghost', onclick: async () => { await sb.auth.signOut(); go('/admin'); } }, 'Sair e usar outra conta'),
+      h('a', { class: 'txt', href: '/', 'data-link': true }, 'Voltar ao acervo')));
+    return false;
+  }
+  const email = h('input', { type: 'email', placeholder: 'e-mail', autocomplete: 'username', name: 'email' });
+  const pass = h('input', { type: 'password', placeholder: 'senha', autocomplete: 'current-password', name: 'password' });
   const enter = async () => {
-    const { error } = await sb.auth.signInWithPassword({ email: email.value, password: pass.value });
-    if (error) msg.textContent = 'E-mail ou senha incorretos.'; else go('/admin');
+    msg.textContent = '';
+    const { error } = await sb.auth.signInWithPassword({ email: email.value.trim(), password: pass.value });
+    if (error) { msg.textContent = 'E-mail ou senha incorretos.'; return; }
+    go('/admin');
   };
   pass.addEventListener('keydown', (e) => e.key === 'Enter' && enter());
   root.append(h('div', { class: 'login' }, h('h2', {}, 'Editor'), email, pass, msg, h('button', { class: 'primary', onclick: enter }, 'Entrar'), h('a', { class: 'txt', href: '/', 'data-link': true }, 'Voltar ao acervo')));
@@ -123,7 +140,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
     try {
       toast('Salvando…');
       await saveDrop(drop, REMOTE ? await makeOg(drop) : undefined);
-    } catch (e) { console.error(e); return toast('Não foi possível salvar'); }
+    } catch (e) { console.error(e); return toast(saveError(e)); }
     slug.value = drop.slug; toast('Salvo');
     if (isNew) go(`/admin/${drop.id}`);
   };

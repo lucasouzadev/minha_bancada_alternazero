@@ -16,7 +16,7 @@ alter table public.drops enable row level security;
 
 create or replace function public.is_admin() returns boolean
 language sql stable security definer set search_path = public as $$
-  select exists (select 1 from public.admins where email = (auth.jwt() ->> 'email'));
+  select exists (select 1 from public.admins where lower(email) = lower(auth.jwt() ->> 'email'));
 $$;
 
 -- público lê só o que está publicado; admin lê e escreve tudo
@@ -31,7 +31,15 @@ create policy "admins: cada um ve o proprio" on public.admins for select to auth
 insert into storage.buckets (id, name, public) values ('caixas', 'caixas', true) on conflict (id) do nothing;
 create policy "caixas: admin envia" on storage.objects for insert to authenticated with check (bucket_id = 'caixas' and public.is_admin());
 create policy "caixas: admin altera" on storage.objects for update to authenticated using (bucket_id = 'caixas' and public.is_admin());
+create policy "caixas: admin le" on storage.objects for select to authenticated using (bucket_id = 'caixas' and public.is_admin());
 create policy "caixas: admin apaga" on storage.objects for delete to authenticated using (bucket_id = 'caixas' and public.is_admin());
+
+-- permissões explícitas da API
+grant usage on schema public to anon, authenticated;
+grant select on public.drops to anon, authenticated;
+grant insert, update, delete on public.drops to authenticated;
+grant select on public.admins to authenticated;
+grant execute on function public.is_admin() to anon, authenticated;
 
 -- Depois de criar seu usuario em Authentication > Users:
 -- insert into public.admins (email) values ('seu@email.com');
