@@ -14,6 +14,8 @@ export const FINISH_LABEL: Record<Finish, string> = { matte: 'Fosco', satin: 'Ac
 const STEPS = ['Identidade', 'Caixa', 'Arte', 'Publicar'] as const;
 /** Temas da Alternazero (a partir dos nomes dos drops) para sugerir como tag, além das já usadas. */
 const THEME_TAGS = ['halloween', 'alquimia', 'julgamento', 'insetos', 'mecha', 'investigação', 'horror', 'anime', 'ocultismo', 'cyber', 'gótico', 'corpo'];
+/** Itens que a Alternazero põe na caixa além da roupa (acessórios e embalagem), como atalhos de um toque. */
+const ITEM_SUGGEST = ['Cartela de adesivos', 'Pin Rubedo', 'Caderno Grande Obra', 'Boné Aniquilação', 'Gorro O Fruto', 'Ziplock da marca', 'Cartão numerado'];
 /** Medidas prontas (mm): largura × altura × profundidade. */
 const PRESETS: [string, [number, number, number]][] = [['Padrão', [200, 300, 60]], ['Compacta', [150, 200, 50]], ['Larga', [250, 350, 80]], ['Quadrada', [200, 200, 80]]];
 
@@ -188,7 +190,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
   };
   const itemsTa = h('textarea', { name: 'items', rows: 3, placeholder: 'Uma por linha', value: drop.items.join('\n'), autocorrect: 'off', oninput: () => { drop.items = itemsTa.value.split('\n').map((s) => s.trim()).filter(Boolean); } });
   const tagsIn = h('input', { name: 'tags', value: drop.tags.join(', '), placeholder: 'horror, anime, ocultismo', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'none', enterkeyhint: 'done', oninput: () => { drop.tags = tagsIn.value.split(',').map((s) => s.trim()).filter(Boolean); } });
-  binders.push(() => { itemsTa.value = drop.items.join('\n'); tagsIn.value = drop.tags.join(', '); renderSuggest(); });
+  binders.push(() => { itemsTa.value = drop.items.join('\n'); tagsIn.value = drop.tags.join(', '); renderSuggest(); renderItemSuggest(); });
 
   // sugestões de tags: as já usadas nos outros drops (mais comuns primeiro) e os temas da marca; um toque adiciona
   const used = new Map<string, number>();
@@ -206,6 +208,18 @@ export async function adminPage(root: HTMLElement, id?: string) {
     suggest.hidden = !list.length;
   }
   tagsIn.addEventListener('input', renderSuggest);
+  // itens da caixa: os da marca primeiro, depois os já usados nos outros drops; um toque acrescenta uma linha
+  const itemPool = [...new Set([...ITEM_SUGGEST, ...all.flatMap((d) => d.items ?? [])])];
+  const itemSuggest = h('div', { class: 'chips', role: 'group', ariaLabel: 'Itens comuns' });
+  function renderItemSuggest() {
+    const have = new Set(drop.items.map((x) => x.toLowerCase()));
+    const list = itemPool.filter((t) => !have.has(t.toLowerCase())).slice(0, 8);
+    itemSuggest.replaceChildren(...list.map((t) => h('button', { class: 'chip', type: 'button', onclick: () => {
+      drop.items = [...drop.items, t]; itemsTa.value = drop.items.join('\n'); renderItemSuggest(); persist();
+    } }, `+ ${t}`)));
+    itemSuggest.hidden = !list.length;
+  }
+  itemsTa.addEventListener('input', renderItemSuggest);
   const taglineIn = h('input', { name: 'tagline', value: drop.tagline, placeholder: 'Você pode correr, mas não pode se esconder.', autocomplete: 'off', enterkeyhint: 'next', oninput: () => { drop.tagline = taglineIn.value; } });
   const conceptTa = h('textarea', { name: 'concept', rows: 4, value: drop.concept, placeholder: 'A história do drop, em poucas linhas.', oninput: () => { drop.concept = conceptTa.value; } });
   const storeErr = h('p', { class: 'field-err', id: 'err-store', hidden: true });
@@ -271,7 +285,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
   const renderState = () => { stateChip.textContent = drop.published ? 'Publicado' : 'Rascunho'; stateChip.classList.toggle('live', drop.published); };
   const pubIn = h('input', { type: 'checkbox', name: 'published', checked: drop.published, onchange: () => { drop.published = pubIn.checked; renderState(); } });
   binders.push(() => { pubIn.checked = drop.published; renderState(); });
-  renderState(); renderTitle(); renderLink(); renderPresets(); renderSuggest();
+  renderState(); renderTitle(); renderLink(); renderPresets(); renderSuggest(); renderItemSuggest();
 
   // ---------- passos ----------
   const summary = h('ul', { class: 'sum', 'aria-label': 'Resumo' });
@@ -306,7 +320,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
     h('section', { class: 'step', 'data-step': '3', 'aria-labelledby': 'st-3' },
       h('h3', { id: 'st-3', tabIndex: -1 }, 'Quase lá'),
       summary,
-      field('Dentro da caixa', itemsTa), h('div', { class: 'field' }, field('Tags', tagsIn), suggest),
+      h('div', { class: 'field' }, field('Dentro da caixa', itemsTa), itemSuggest), h('div', { class: 'field' }, field('Tags', tagsIn), suggest),
       seg('Status', 'status', Object.entries(STATUS_LABEL) as [Status, string][]),
       h('div', { class: 'field' }, field('Link da loja', storeIn), storeErr),
       h('label', { class: 'switch' }, pubIn, h('span', {}, h('b', {}, 'Publicado'), h('small', {}, 'Aparece no acervo e no link')))),

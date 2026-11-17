@@ -326,6 +326,24 @@ test.describe('Editor — funções @flow', () => {
     void errors;
   });
 
+  test('itens da caixa: atalhos com os acessórios e a embalagem da marca', async ({ page, errors }) => {
+    await page.goto('/admin');
+    await name(page).fill('Itens');
+    await stepTab(page, 3);
+    const box = page.getByLabel('Dentro da caixa');
+    for (const t of ['Cartela de adesivos', 'Pin Rubedo', 'Caderno Grande Obra', 'Boné Aniquilação', 'Gorro O Fruto', 'Ziplock da marca'])
+      await expect(page.getByRole('button', { name: `+ ${t}` })).toBeVisible();
+    await page.getByRole('button', { name: '+ Cartela de adesivos' }).click();
+    await page.getByRole('button', { name: '+ Pin Rubedo' }).click();
+    await expect(box).toHaveValue('Cartela de adesivos\nPin Rubedo');
+    await expect(page.getByRole('button', { name: '+ Pin Rubedo' })).toHaveCount(0);   // já está na lista
+    // digitar à mão continua valendo e atualiza os atalhos
+    await box.fill('Pin Rubedo\nMeu item');
+    await expect(page.getByRole('button', { name: '+ Cartela de adesivos' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '+ Pin Rubedo' })).toHaveCount(0);
+    void errors;
+  });
+
   test('link da loja inválido (javascript:) é recusado ao salvar', async ({ page, errors }) => {
     await page.goto('/admin');
     await name(page).fill('Link Ruim');
