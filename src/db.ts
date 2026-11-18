@@ -1,20 +1,24 @@
 import { demoDieline } from './art';
-import { REMOTE, remoteDelete, remoteList, remoteSave } from './remote';
+import { REMOTE, remoteDelete, remoteGet, remoteList, remoteMeta, remoteSave, remoteSetPublished } from './remote';
 import type { Drop } from './types';
 
-const STORE = 'drops';
+const STORE = 'drops', DRAFTS = 'drafts';
 function open(): Promise<IDBDatabase> {
   return new Promise((res, rej) => {
-    const r = indexedDB.open('caixa3d', 1);
-    r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: 'id' });
+    const r = indexedDB.open('caixa3d', 2);
+    r.onupgradeneeded = () => {
+      const db = r.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(DRAFTS)) db.createObjectStore(DRAFTS); // rascunhos do editor (com as imagens), chave = "new" ou id
+    };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
   });
 }
-async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>, store = STORE): Promise<T> {
   const db = await open();
   return new Promise((res, rej) => {
-    const rq = fn(db.transaction(STORE, mode).objectStore(STORE));
+    const rq = fn(db.transaction(store, mode).objectStore(store));
     rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
   });
 }
@@ -22,23 +26,34 @@ async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRe
 export const slugify = (s: string) =>
   s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'drop';
 
-export async function listDrops(): Promise<Drop[]> {
-  if (REMOTE) return remoteList();
+export async function listDrops(onlyPublished = false): Promise<Drop[]> {
+  if (REMOTE) return remoteList(onlyPublished);
   await ensureSeed();
   const all = await run<Drop[]>('readonly', (s) => s.getAll());
   return all.sort((a, b) => b.date.localeCompare(a.date));
 }
+/** Lista leve para seletores e checagens: no servidor não baixa as imagens de cada drop. */
+export async function listDropMeta(): Promise<Drop[]> {
+  if (REMOTE) return remoteMeta();
+  return listDrops();
+}
 export async function getDrop(id: string) {
-  if (REMOTE) return (await remoteList()).find((d) => d.id === id);
+  if (REMOTE) return remoteGet(id);
   return run<Drop | undefined>('readonly', (s) => s.get(id));
 }
 export async function getBySlug(slug: string) { return (await listDrops()).find((d) => d.slug === slug); }
+/** Publicar/despublicar ("remover acesso") sem mexer no resto do drop. */
+export async function setPublished(id: string, on: boolean) {
+  if (REMOTE) return remoteSetPublished(id, on);
+  const d = await run<Drop | undefined>('readonly', (s) => s.get(id));
+  if (d) { d.published = on; d.updatedAt = Date.now(); await run('readwrite', (s) => s.put(d)); }
+}
 export async function deleteDrop(id: string) {
   if (REMOTE) return remoteDelete(id);
   await run('readwrite', (s) => s.delete(id));
 }
 export async function saveDrop(d: Drop, og?: Blob) {
-  const others = (await listDrops()).filter((x) => x.id !== d.id);
+  const others = (await listDropMeta()).filter((x) => x.id !== d.id);
   let slug = slugify(d.slug || d.name), n = 2;
   while (others.some((x) => x.slug === slug)) slug = `${slugify(d.slug || d.name)}-${n++}`;
   d.slug = slug; d.updatedAt = Date.now();
@@ -46,10 +61,26 @@ export async function saveDrop(d: Drop, og?: Blob) {
   await run('readwrite', (s) => s.put(d));
   return d;
 }
+/* Rascunho do editor: guardado no aparelho (inclui as imagens) e apagado ao salvar. */
+export type Draft = Omit<Drop, 'updatedAt'> & { savedAt: number; dup?: boolean };
+export const saveDraft = (key: string, d: Drop) => run('readwrite', (s) => s.put({ ...d, savedAt: Date.now() }, key), DRAFTS).catch(() => undefined);
+export const loadDraft = (key: string) => run<Draft | undefined>('readonly', (s) => s.get(key), DRAFTS).catch(() => undefined);
+export const clearDraft = (key: string) => run('readwrite', (s) => s.delete(key), DRAFTS).catch(() => undefined);
+
+/** Cópia em rascunho (com arte própria) guardada como "novo drop" no aparelho; o editor abre com ela. */
+export async function draftCopy(d: Drop) {
+  const copy: Drop = {
+    ...d, id: crypto.randomUUID(), name: `${d.name.trim() || 'Drop'} (cópia)`, slug: '', published: false,
+    items: [...d.items], tags: [...d.tags], updatedAt: Date.now(),
+    // blobs novos: o servidor guarda cada arquivo por drop, a cópia precisa do próprio upload
+    art: Object.fromEntries(Object.entries(d.art).map(([k, b]) => [k, new Blob([b as Blob], { type: (b as Blob).type })])) as Drop['art'],
+  };
+  await saveDraft('new', { ...copy, dup: true } as Drop);
+}
 export function newDrop(): Drop {
   return {
     id: crypto.randomUUID(), slug: '', name: '', subtitle: '', date: new Date().toISOString().slice(0, 10),
-    artist: '', items: [], tags: [], w: 200, h: 300, d: 60, finish: 'matte', openMode: 'top',
+    artist: '', items: [], tags: [], tagline: '', concept: '', status: 'available', storeUrl: '', w: 200, h: 300, d: 60, finish: 'matte', openMode: 'top',
     inner: '#15090c', tissue: '#8c1d2f', artMode: 'dieline', art: {}, published: false, updatedAt: Date.now(),
   };
 }
@@ -66,12 +97,12 @@ function ensureSeed() {
       d.published = true; return d;
     };
     const drops = [
-      await mk({ name: 'Mutações', slug: 'mutacoes', date: '2026-10-10', w: 200, h: 300, d: 60, openMode: 'book', finish: 'satin', items: ['Camiseta oversized', 'Sticker pack', 'Cartão numerado'], tags: ['horror', 'anime', 'corpo'] }, true, 7),
+      await mk({ name: 'Mutações', slug: 'mutacoes', date: '2026-10-10', tagline: 'Você pode correr, mas não pode se esconder.', concept: 'Especial de Halloween: o corpo em mutação, entre vírus, fungos e flores. A caixa guarda a camiseta, os adesivos e o cartão numerado do drop.', storeUrl: 'https://www.alternazero.com/lancamentos/drop-mutacoes/', w: 200, h: 300, d: 60, openMode: 'book', finish: 'satin', items: ['Camiseta oversized', 'Sticker pack', 'Cartão numerado'], tags: ['horror', 'anime', 'corpo'] }, true, 7),
       await mk({ name: 'Ensaio', slug: 'ensaio', date: '2026-06-21', w: 160, h: 240, d: 90, openMode: 'top', finish: 'matte', inner: '#101014', tissue: '#6b6b78', items: ['Moletom', 'Pin'], tags: ['insetos', 'ocultismo'] }, false, 21),
       await mk({ name: 'Circuito', slug: 'circuito', date: '2026-02-02', w: 220, h: 320, d: 40, openMode: 'book', finish: 'gloss', inner: '#0c0c0c', tissue: '#cfcfcf', items: ['Camiseta', 'Patch'], tags: ['cyber', 'gótico'] }, false, 99),
       await mk({ name: 'Relicário', slug: 'relicario', date: '2025-11-08', w: 180, h: 180, d: 70, openMode: 'top', finish: 'satin', items: ['Camiseta', 'Chaveiro'], tags: ['ocultismo'] }, true, 31),
-      await mk({ name: 'Vigília', slug: 'vigilia', date: '2025-08-15', w: 240, h: 340, d: 50, openMode: 'book', finish: 'matte', items: ['Jaqueta'], tags: ['horror'] }, false, 63),
-      await mk({ name: 'Cicatriz', slug: 'cicatriz', date: '2025-04-01', w: 150, h: 210, d: 55, openMode: 'top', finish: 'gloss', items: ['Boné', 'Pin'], tags: ['anime'] }, true, 77),
+      await mk({ name: 'Vigília', slug: 'vigilia', date: '2025-08-15', status: 'soon', w: 240, h: 340, d: 50, openMode: 'book', finish: 'matte', items: ['Jaqueta'], tags: ['horror'] }, false, 63),
+      await mk({ name: 'Cicatriz', slug: 'cicatriz', date: '2025-04-01', status: 'soldout', w: 150, h: 210, d: 55, openMode: 'top', finish: 'gloss', items: ['Boné', 'Pin'], tags: ['anime'] }, true, 77),
     ];
     for (const d of drops) await run('readwrite', (s) => s.put(d));
   })());

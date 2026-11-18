@@ -31,6 +31,7 @@ export class GL {
     this.camera.aspect = W / H; this.camera.position.set(0, 0, this.D); this.camera.updateProjectionMatrix();
     this.ppc = (H / 2) / (this.D * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
     this.onResize?.();
+    this.render(); // mesmo motivo do palco do editor: setSize apaga o canvas até o próximo frame
   }
   toWorld(px: number, py: number) { return { x: (px - this.W / 2) / this.ppc, y: -(py - this.H / 2) / this.ppc }; }
   render() { this.renderer.render(this.scene, this.camera); }

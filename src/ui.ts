@@ -14,6 +14,17 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<s
 
 export const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/**
+ * Última forma de interação (teclado ou ponteiro), em <html data-input>.
+ * O foco devolvido por código (ex.: ao fechar a caixa) só mostra anel quando a pessoa navega pelo teclado;
+ * sem isso o Safari/Chrome desenham o contorno depois de um toque.
+ */
+const docEl = document.documentElement;
+docEl.dataset.input = 'pointer';
+addEventListener('keydown', (e) => { if (!e.metaKey && !e.ctrlKey && !e.altKey) docEl.dataset.input = 'key'; }, true);
+addEventListener('pointerdown', () => { docEl.dataset.input = 'pointer'; }, true);
+export const usingKeyboard = () => docEl.dataset.input === 'key';
+
 /* ---------- avisos (toast) ---------- */
 export type ToastKind = 'info' | 'ok' | 'error';
 let tray: HTMLElement | null = null;
@@ -70,9 +81,29 @@ const ICONS: Record<string, string> = {
   expand: '<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>',
   shrink: '<path d="M20 10h-6V4M4 14h6v6M14 10l7-7M10 14l-7 7"/>',
   trash: '<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/>',
+  more: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+  copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/>',
+  list: '<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  chev: '<path d="M9 5l7 7-7 7"/>',
+  minus: '<path d="M5 12h14"/>',
+  contrast: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17z" fill="currentColor"/>',
 };
 export function icon(name: keyof typeof ICONS | string, size = 22) {
   const s = document.createElement('span'); s.className = 'ico-svg'; s.setAttribute('aria-hidden', 'true');
   s.innerHTML = `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
   return s;
 }
+
+/**
+ * Trava os gestos nativos do navegador que atrapalham um app: zoom por pinça (o iOS ignora user-scalable=no),
+ * menu de segurar em imagens/canvas e início de seleção fora dos campos de texto.
+ * Campos (input/textarea/select) ficam intactos; a visualização "Arte" faz o próprio zoom.
+ */
+const isField = (t: EventTarget | null) => t instanceof Element && !!t.closest('input,textarea,select,[contenteditable],.sel');
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) addEventListener(ev, (e) => e.preventDefault(), { passive: false } as AddEventListenerOptions);
+addEventListener('selectstart', (e) => { if (!isField(e.target)) e.preventDefault(); });
+addEventListener('contextmenu', (e) => { if (!isField(e.target) && !(e.target instanceof HTMLAnchorElement)) e.preventDefault(); });
+addEventListener('dragstart', (e) => { if (!isField(e.target)) e.preventDefault(); });
+// pinça com dois dedos em qualquer lugar (Safari antigo que ignora o viewport)
+addEventListener('touchmove', (e) => { if ((e as TouchEvent).touches.length > 1 && !(e.target as Element)?.closest?.('[data-zoomable]')) e.preventDefault(); }, { passive: false });
