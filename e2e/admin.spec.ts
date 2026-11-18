@@ -1,7 +1,10 @@
 import { test, expect, openAcervo, openBox, isTouch, type Page } from './helpers';
 
 /** Editor em 4 passos: Identidade → Caixa → Arte → Publicar. */
-const next = (page: Page) => page.getByTestId('next').click();
+/** No celular o rodapé some enquanto um campo está em foco (teclado aberto): sai do campo, como o "✓" do teclado. */
+const done = (page: Page) => page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+const next = async (page: Page) => { await done(page); await page.getByTestId('next').click(); };
+const saveBtn = async (page: Page) => { await done(page); await page.getByRole('button', { name: 'Salvar' }).click(); };
 const stepTab = (page: Page, n: number) => page.getByTestId(`step-${n}`).click();
 const name = (page: Page) => page.getByLabel('Nome', { exact: true });
 const openMore = async (page: Page) => { await page.locator('details.more:visible > summary').first().click(); };
@@ -34,7 +37,7 @@ test.describe('Editor — funções @flow', () => {
     await next(page);
     await page.getByLabel('Dentro da caixa').fill('Camiseta\nAdesivo');
     await page.getByLabel(/publicado/i).check();
-    await page.getByRole('button', { name: 'Salvar' }).click();
+    await saveBtn(page);
     await expect(page).toHaveURL(/\/admin\/[0-9a-f-]{36}$/, { timeout: 30_000 });
     await expect(page.getByRole('heading', { name: /editar drop/i })).toBeVisible();
     // tela "Pronto": o que acabou de subir
@@ -59,7 +62,7 @@ test.describe('Editor — funções @flow', () => {
   test('não publicado não aparece no acervo', async ({ page, errors }) => {
     await page.goto('/admin/novo');
     await toPublish(page, 'Rascunho E2E');
-    await page.getByRole('button', { name: 'Salvar' }).click();
+    await saveBtn(page);
     await expect(page).toHaveURL(/\/admin\/[0-9a-f-]{36}$/, { timeout: 30_000 });
     await openAcervo(page, '/', 6);
     void errors;
@@ -139,7 +142,7 @@ test.describe('Editor — funções @flow', () => {
     await page.goto('/admin/novo');
     await toPublish(page, 'No Lugar E2E');
     await page.locator('.ed').evaluate((el) => { (el as any).__mark = 1; });
-    await page.getByRole('button', { name: 'Salvar' }).click();
+    await saveBtn(page);
     await expect(page).toHaveURL(/\/admin\/[0-9a-f-]{36}$/, { timeout: 30_000 });
     await expect(page.getByRole('heading', { name: /editar drop/i })).toBeVisible();
     expect(await page.locator('.ed').evaluate((el) => (el as any).__mark), 'mesma tela, não recriada').toBe(1);
@@ -199,7 +202,7 @@ test.describe('Editor — funções @flow', () => {
     await page.getByRole('button', { name: 'Usar arte de exemplo' }).click();
     await next(page);
     await page.getByLabel(/publicado/i).check();
-    await page.getByRole('button', { name: 'Salvar' }).click();
+    await saveBtn(page);
     await expect(page).toHaveURL(/\/admin\/[0-9a-f-]{36}$/, { timeout: 30_000 });
     await menuAction(page, /duplicar/i);
     await expect(page.getByRole('dialog')).toContainText('Cria uma cópia em rascunho');
@@ -210,7 +213,7 @@ test.describe('Editor — funções @flow', () => {
     await next(page); await next(page);
     await next(page);
     await expect(page.getByLabel(/publicado/i)).not.toBeChecked();
-    await page.getByRole('button', { name: 'Salvar' }).click();
+    await saveBtn(page);
     await expect(page).toHaveURL(/\/admin\/[0-9a-f-]{36}$/, { timeout: 30_000 });
     await page.getByTestId('step-0').click(); await openMore(page);
     await expect(page.getByLabel('Link (slug)')).toHaveValue('original-e2e-copia');
@@ -254,7 +257,7 @@ test.describe('Editor — funções @flow', () => {
     void errors;
   });
 
-  test('teclado aberto (toque): a prévia some, o rodapé continua, e tudo volta depois', async ({ page, errors }) => {
+  test('teclado aberto (toque): a prévia e o rodapé somem, e tudo volta depois', async ({ page, errors }) => {
     test.skip(!(await isTouch(page)) || page.viewportSize()!.width >= 1024, 'só celular/tablet em pé');
     await page.goto('/admin/novo');
     const ed = page.locator('.ed');
@@ -264,7 +267,7 @@ test.describe('Editor — funções @flow', () => {
     await page.getByLabel('Largura (mm)').focus();
     await expect(ed).toHaveClass(/typing/);
     await expect(page.locator('.ed-stage')).toBeHidden();
-    await expect(page.getByTestId('next')).toBeInViewport();
+    await expect(page.locator('.ed-foot')).toBeHidden();                         // menos camadas sobre o teclado
     // pular para o próximo campo não pisca
     await page.getByLabel('Altura (mm)').focus();
     await expect(ed).toHaveClass(/typing/);
@@ -314,7 +317,7 @@ test.describe('Editor — funções @flow', () => {
     await page.getByRole('radio', { name: 'Esgotado' }).click();
     await page.getByLabel('Link da loja').fill('https://www.alternazero.com/lancamentos/drop-teste/');
     await page.getByLabel(/publicado/i).check();
-    await page.getByRole('button', { name: 'Salvar' }).click();
+    await saveBtn(page);
     await expect(page).toHaveURL(/\/admin\/[0-9a-f-]{36}$/, { timeout: 30_000 });
 
     await openAcervo(page, '/', 7);
@@ -352,11 +355,11 @@ test.describe('Editor — funções @flow', () => {
     await name(page).fill('Link Ruim');
     await stepTab(page, 3);
     await page.getByLabel('Link da loja').fill('javascript:alert(1)');
-    await page.getByRole('button', { name: 'Salvar' }).click();
+    await saveBtn(page);
     await expect(page.getByText(/começando com https/i)).toBeVisible();
     await expect(page).toHaveURL(/\/admin\/novo$/);
     await page.getByLabel('Link da loja').fill('https://www.alternazero.com/');
-    await page.getByRole('button', { name: 'Salvar' }).click();
+    await saveBtn(page);
     await expect(page).toHaveURL(/\/admin\/[0-9a-f-]{36}$/, { timeout: 30_000 });
     void errors;
   });
@@ -364,7 +367,7 @@ test.describe('Editor — funções @flow', () => {
   test('Pronto: rascunho oferece "Publicar agora"; publicado leva ao acervo; "Editar" volta aos passos', async ({ page, errors }) => {
     await page.goto('/admin/novo');
     await toPublish(page, 'Pronto E2E');
-    await page.getByRole('button', { name: 'Salvar' }).click();
+    await saveBtn(page);
     await expect(page.getByText('Salvo como rascunho', { exact: true })).toBeVisible({ timeout: 30_000 });
     await expect(page.locator('.ed-stage')).toBeVisible();                        // a caixa como ficou
     await page.getByTestId('publish-now').click();
@@ -373,7 +376,7 @@ test.describe('Editor — funções @flow', () => {
     await expect(page.getByRole('heading', { name: 'Como se chama?' })).toBeVisible();
     await expect(name(page)).toHaveValue('Pronto E2E');
     await page.getByTestId('step-3').click();
-    await page.getByRole('button', { name: 'Salvar' }).click();
+    await saveBtn(page);
     await page.getByTestId('see').click();
     await expect(page).toHaveURL(/\/c\/pronto-e2e/);
     await expect(page.getByTestId('acervo')).toHaveAttribute('data-open', 'pronto-e2e', { timeout: 60_000 });
@@ -383,7 +386,7 @@ test.describe('Editor — funções @flow', () => {
   test('menus em folha: alça, título e "Excluir" sem estilo de botão de pílula', async ({ page, errors }) => {
     await page.goto('/admin/novo');
     await toPublish(page, 'Menu E2E');
-    await page.getByRole('button', { name: 'Salvar' }).click();
+    await saveBtn(page);
     await expect(page.getByText('Salvo como rascunho', { exact: true })).toBeVisible({ timeout: 30_000 });
     await page.getByTestId('menu').click();
     const d = page.getByRole('dialog');

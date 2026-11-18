@@ -486,7 +486,8 @@ export async function adminPage(root: HTMLElement, id?: string) {
     if (e.key !== 'Enter' || !(t instanceof HTMLInputElement) || NO_KB.has(t.type)) return;
     e.preventDefault();
     if (step === 0 && !drop.name.trim()) { showNameError(); nameIn.focus(); return; }
-    const fields = [...sections[step].querySelectorAll<HTMLElement>('input, textarea')].filter((f) => typesText(f) && f.offsetParent);
+    // só campos à vista: fora de "Mais opções" fechado (o Chrome ainda dá caixa a esses campos)
+    const fields = [...sections[step].querySelectorAll<HTMLElement>('input, textarea')].filter((f) => typesText(f) && f.offsetParent && !f.closest('details:not([open])'));
     const nextField = fields[fields.indexOf(t) + 1];
     if (nextField) { nextField.focus(); return; }
     t.blur();
