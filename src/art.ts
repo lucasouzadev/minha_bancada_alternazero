@@ -50,14 +50,17 @@ export async function buildTextures(
 }
 
 /** Reduz imagens enviadas (máx 4096px) e converte para webp. */
+export const MAX_UPLOAD = 40 * 1024 * 1024;
 export async function normalizeUpload(file: Blob): Promise<Blob> {
+  // só imagens raster; SVG fica de fora (pode carregar script) e o arquivo original nunca é enviado
+  if (file.size > MAX_UPLOAD || !/^image\/(png|jpe?g|webp|gif|avif|heic|heif|bmp)$/i.test(file.type || 'image/png')) throw new Error('formato');
   const bmp = await createImageBitmap(file);
   const k = Math.min(1, 4096 / Math.max(bmp.width, bmp.height));
   const c = document.createElement('canvas');
   c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
   c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
   bmp.close();
-  return new Promise((res) => c.toBlob((b) => res(b ?? file), 'image/webp', 0.92));
+  return new Promise((res, rej) => c.toBlob((b) => b && /^image\/(webp|png)$/.test(b.type) ? res(b) : rej(new Error('encode'))  /* Safari antigo devolve png */, 'image/webp', 0.92));
 }
 
 export async function imageSize(b: Blob) {

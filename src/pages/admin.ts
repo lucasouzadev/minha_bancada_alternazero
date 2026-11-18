@@ -254,7 +254,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
       try { drop.art[key] = await normalizeUpload(f); } catch { toast('Não foi possível ler essa imagem.', 'error'); show(); return; }
       show(f.name); refresh(); persist();
     };
-    const inp = h('input', { type: 'file', name: `art-${key}`, accept: 'image/*', ariaLabel: label, onchange: () => take(inp.files?.[0]) });
+    const inp = h('input', { type: 'file', name: `art-${key}`, accept: 'image/png,image/jpeg,image/webp,image/gif,image/avif,image/heic,image/heif', ariaLabel: label, onchange: () => take(inp.files?.[0]) });
     const zone = h('label', { class: 'drop' }, inp, thumb, h('span', { class: 'dt' }, h('span', { class: 'lbl' }, label), title, sub));
     zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('over'); });
     zone.addEventListener('dragleave', () => zone.classList.remove('over'));
@@ -386,8 +386,8 @@ export async function adminPage(root: HTMLElement, id?: string) {
   const heading = h('h2', {}, isNew ? 'Novo drop' : 'Editar drop');
   const backLink = h('a', { class: 'ico', href: '/admin', 'data-link': true, ariaLabel: 'Voltar para todos os drops' }, icon('back', 22));
   const menuBtn = h('button', { class: 'ico', type: 'button', ariaLabel: 'Mais ações', 'aria-haspopup': 'dialog', 'data-testid': 'menu', onclick: () => openMenu() }, icon('more', 22));
-  const stepBtns = STEPS.map((name, i) => h('button', { type: 'button', 'data-testid': `step-${i}`, 'aria-label': `Passo ${i + 1} de ${STEPS.length}: ${name}`, onclick: () => { if (i > step && step === 0 && !drop.name.trim()) { showNameError(); nameIn.focus(); return; } show(i); } },
-    h('span', { class: 'bar' }), h('span', { class: 'lbl' }, h('b', {}, String(i + 1)), h('span', { class: 'nm' }, ` ${name}`))));
+  const stepBtns = STEPS.map((name, i) => h('button', { type: 'button', 'data-testid': `step-${i}`, onclick: () => { if (i > step && step === 0 && !drop.name.trim()) { showNameError(); nameIn.focus(); return; } show(i); } },
+    h('span', { class: 'bar' }), h('span', { class: 'lbl' }, h('span', { class: 'sr-only' }, 'Passo '), h('b', {}, String(i + 1)), h('span', { class: 'nm' }, ` ${name}`))));
   const lidBtn = h('button', { class: 'ghost', type: 'button', ariaPressed: 'false', onclick: () => {
     target = target ? 0 : 1; lidBtn.textContent = target ? 'Fechar tampa' : 'Abrir tampa'; lidBtn.ariaPressed = String(!!target);
   } }, 'Abrir tampa');

@@ -148,6 +148,7 @@ html:has(.acervo){scroll-snap-type:y proximity}
 /* "Abrir": fora da folha, logo acima dela; só no modo Caixa e com a folha aberta */
 .lid-fab{position:absolute;right:max(16px,env(safe-area-inset-right));bottom:calc(100% + 12px);box-shadow:0 10px 30px -8px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.14);
   transition:opacity .25s var(--ease-out),transform .25s var(--ease-out)}
+.sheet:not(.in) .lid-fab{visibility:hidden}
 .sheet.peek .lid-fab,.acervo.focus .lid-fab{opacity:0;transform:translateY(8px);pointer-events:none}
 .sh-toggle .ico-svg{transform:rotate(90deg);transition:transform .3s var(--ease-out)}
 .sheet.peek .sh-toggle .ico-svg{transform:rotate(-90deg)}
@@ -489,7 +490,7 @@ dialog.sheet-dlg::backdrop{background:rgba(0,0,0,.55)}
 .dlg-btns{display:flex;gap:10px;padding:0 16px 10px}.dlg-btns>*{flex:1;min-height:48px}
 .primary.danger-fill{background:#a3132b;border-color:#a3132b}
 @media (hover:hover){.primary.danger-fill:hover{background:#b8173a;border-color:#b8173a}}
-dialog.sheet-dlg.closing{animation:sheetout .22s var(--ease-in) forwards}
+dialog.sheet-dlg.closing{transition:transform .24s var(--ease-in)!important;transform:translateY(105%)!important}
 dialog.sheet-dlg.closing::backdrop{animation:fadeout .22s var(--ease-in) forwards}
 dialog.sheet-dlg[open]::backdrop{animation:fadein .25s var(--ease-out)}
 @keyframes sheetout{from{transform:translateY(0)}to{transform:translateY(100%)}}

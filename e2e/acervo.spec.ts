@@ -7,6 +7,17 @@ test.describe('Acervo — funções @flow', () => {
     void errors;
   });
 
+  test('"Abrir" só aparece com uma caixa aberta', async ({ page, errors }) => {
+    await openAcervo(page);
+    await expect(page.getByTestId('lid')).toBeHidden();
+    await openBox(page, 'mutacoes');
+    await expect(page.getByTestId('lid')).toBeVisible();
+    await sheet(page).getByRole('button', { name: 'Fechar', exact: true }).click();
+    await expectClosed(page);
+    await expect(page.getByTestId('lid')).toBeHidden();
+    void errors;
+  });
+
   test('abre a caixa, mostra a folha e fecha pelo botão', async ({ page, errors }) => {
     await openAcervo(page);
     await openBox(page, 'mutacoes');

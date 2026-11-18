@@ -478,6 +478,38 @@ test.describe('Editor — funções @flow', () => {
     void errors;
   });
 
+  test('alça da folha: tocar fecha; arrastar pouco volta; arrastar para baixo fecha sem pular', async ({ page, errors }) => {
+    await page.goto('/admin');
+    const open = page.locator('dialog.sheet-dlg[open]');
+    await page.getByTestId('row-menu').first().click();
+    await expect(open).toBeVisible();
+    const grip = open.locator('.dlg-head, .sh-handle').first();
+    await grip.click();                                                            // toque na alça
+    await expect(open).toHaveCount(0);
+    await page.getByTestId('row-menu').first().click();
+    await expect(open).toBeVisible();
+    const settled = () => expect.poll(() => open.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
+    const at = async () => { await settled(); const b = (await grip.boundingBox())!; return [b.x + b.width / 2, b.y + b.height / 2]; };
+    let [x, y] = await at();
+    await page.mouse.move(x, y); await page.mouse.down();
+    await page.mouse.move(x, y + 30, { steps: 10 });                               // pouco e devagar: volta
+    await page.waitForTimeout(150);
+    await page.mouse.move(x, y + 31, { steps: 2 });
+    await page.mouse.up();
+    await expect(open).toBeVisible();
+    [x, y] = await at();
+    await page.mouse.move(x, y); await page.mouse.down();
+    await page.mouse.move(x, y + 140, { steps: 8 });
+    const before = (await open.boundingBox())!.y;
+    await page.mouse.up();
+    // a saída continua de onde o dedo soltou (não volta para o topo antes)
+    await page.waitForTimeout(40);
+    const mid = await open.boundingBox();
+    if (mid) expect(mid.y).toBeGreaterThanOrEqual(before - 2);
+    await expect(open).toHaveCount(0);
+    void errors;
+  });
+
   test('teclado: "›" passa para o próximo campo e, no último, para o próximo passo; rodapé some ao digitar (toque)', async ({ page, errors }) => {
     await page.goto('/admin/novo');
     await name(page).fill('Teclas');

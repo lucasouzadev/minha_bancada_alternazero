@@ -6,7 +6,7 @@ import { collectionUrl, getOwned, toggleOwned } from '../collection';
 import { listDrops } from '../db';
 import { GL } from '../gl';
 import { dielineRects } from '../layout';
-import { FACES, STATUS_LABEL, safeUrl, type Drop, type Face } from '../types';
+import { FACES, STATUS_LABEL, safeHex, safeUrl, type Drop, type Face } from '../types';
 import { zoomable, type Zoom } from '../zoom';
 import { announce, fmtDate, h, icon, reducedMotion, share, toast, usingKeyboard } from '../ui';
 
@@ -37,7 +37,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     h('header', { class: 'top' }, h('div', { class: 'brand' }, h('h1', {}, isShared ? 'Coleção' : 'Acervo')), h('i', { class: 'ico' })), shellRows);
   root.append(shell);
   { const c = colsOf(shell); const n = c >= 6 ? c : c * 2; for (let i = 0; i < n; i += c) shellRows.append(h('div', { class: 'row' }, ...Array.from({ length: c }, () => h('div', { class: 'slot' })))); }
-  const drops = (await listDrops()).filter((d) => d.published);
+  const drops = (await listDrops(true)).filter((d) => d.published);
   shell.remove();
 
   /* ---------- DOM ---------- */
@@ -323,7 +323,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     const store = safeUrl(d.storeUrl); storeLink.hidden = !store; if (store) storeLink.href = store;
     itemsEl.replaceChildren(...d.items.map((it) => h('li', {}, it)));
     itemsBox.hidden = !d.items.length;
-    const dot = (hex: string, label: string) => h('i', { class: 'sw', style: `background:${hex}`, title: `${label} ${hex}`, role: 'img', 'aria-label': `${label} ${hex}` });
+    const dot = (raw: string, label: string, hex = safeHex(raw)) => h('i', { class: 'sw', style: `background:${hex}`, title: `${label} ${hex}`, role: 'img', 'aria-label': `${label} ${hex}` });
     const cell = (k: string, v: Node | string | null, wide = false) => v ? h('div', { class: `spec${wide ? ' wide' : ''}` }, h('dt', {}, k), h('dd', {}, v)) : null;
     const cells = [
       cell('Medidas', `${d.w} × ${d.h} × ${d.d} mm`),

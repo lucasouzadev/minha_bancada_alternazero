@@ -2,7 +2,7 @@ import { clearDraft, deleteDrop, draftCopy, getDrop, listDropMeta, setPublished 
 import { go } from '../main';
 import { REMOTE, remoteThumb, sb } from '../remote';
 import { action, confirmSheet, sheet } from '../sheet';
-import { STATUS_LABEL, type Drop } from '../types';
+import { STATUS_LABEL, safeHex, type Drop } from '../types';
 import { announce, fmtDate, h, icon, toast } from '../ui';
 import { loginGate } from './admin';
 
@@ -30,14 +30,6 @@ export async function hubPage(root: HTMLElement) {
   const seg = h('div', { class: 'seg hub-seg', role: 'radiogroup', ariaLabel: 'Mostrar' }, ...segBtns);
   const newBtn = () => h('a', { class: 'primary hub-new', href: '/admin/novo', 'data-link': true, 'data-testid': 'hub-new' }, icon('plus', 20), 'Novo drop');
 
-  // dica para tirar as barras do Safari: abrir como app (some a barra de endereço)
-  const isiOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const standalone = matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true;
-  let hintOff = false; try { hintOff = localStorage.getItem('hint-app') === '1'; } catch { /* sem armazenamento */ }
-  const hint = isiOS && !standalone && !hintOff ? h('div', { class: 'notice hub-hint', role: 'note' }, icon('alert', 18),
-    h('span', {}, 'Mais espaço na tela: no Safari, Compartilhar → Adicionar à Tela de Início. O editor abre como app, sem a barra de endereço.'),
-    h('button', { class: 'ico', type: 'button', ariaLabel: 'Dispensar dica', onclick: (e: Event) => { try { localStorage.setItem('hint-app', '1'); } catch { /* */ } (e.currentTarget as HTMLElement).parentElement!.remove(); } }, icon('close', 18))) : null;
-
   const out = REMOTE ? h('button', { class: 'txt', type: 'button', onclick: async () => {
     if (!(await confirmSheet({ title: 'Sair do editor?', body: 'Você volta para a tela de login. Nada que já foi salvo é perdido.', confirm: 'Sair' }))) return;
     await sb.auth.signOut(); go('/admin');
@@ -48,12 +40,12 @@ export async function hubPage(root: HTMLElement) {
       h('a', { class: 'ico', href: '/', 'data-link': true, ariaLabel: 'Ver o acervo público', 'data-tip': 'Acervo público' }, icon('back', 22)),
       h('div', { class: 'hub-title' }, h('h1', {}, 'Drops'), count),
       out, h('span', { class: 'hub-new-top' }, newBtn())),
-    hint, seg, list,
+    seg, list,
     h('div', { class: 'hub-foot' }, newBtn()));
   sk.replaceWith(hub);
 
   const thumb = (d: Drop) => {
-    const box = h('span', { class: 'hub-thumb', 'aria-hidden': 'true', style: `--in:${d.inner};--ts:${d.tissue}` });
+    const box = h('span', { class: 'hub-thumb', 'aria-hidden': 'true', style: `--in:${safeHex(d.inner)};--ts:${safeHex(d.tissue)}` });
     if (REMOTE) { const img = h('img', { src: remoteThumb(d.id, d.updatedAt), alt: '', loading: 'lazy', draggable: false }); img.onerror = () => img.remove(); box.append(img); }
     return box;
   };
@@ -64,7 +56,7 @@ export async function hubPage(root: HTMLElement) {
       d.status === 'soldout' || d.status === 'soon' ? h('span', { class: `badge ${d.status}` }, STATUS_LABEL[d.status]) : null,
     ];
     return h('div', { class: 'hub-row', role: 'listitem', 'data-id': d.id },
-      h('a', { class: 'hub-main', href: `/admin/${d.id}`, 'data-link': true, ariaLabel: `Editar ${d.name}` },
+      h('a', { class: 'hub-main', href: `/admin/${d.id}`, 'data-link': true, title: `Editar ${d.name}` },
         thumb(d),
         h('span', { class: 'hub-tx' }, h('b', {}, d.name || 'Sem nome'), h('small', {}, bits.join(' · ') || ' '), h('span', { class: 'hub-badges' }, ...badges))),
       h('button', { class: 'ico', type: 'button', ariaLabel: `Ações de ${d.name}`, 'data-testid': 'row-menu', onclick: () => openActions(d) }, icon('more', 22)));

@@ -26,8 +26,8 @@ async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRe
 export const slugify = (s: string) =>
   s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'drop';
 
-export async function listDrops(): Promise<Drop[]> {
-  if (REMOTE) return remoteList();
+export async function listDrops(onlyPublished = false): Promise<Drop[]> {
+  if (REMOTE) return remoteList(onlyPublished);
   await ensureSeed();
   const all = await run<Drop[]>('readonly', (s) => s.getAll());
   return all.sort((a, b) => b.date.localeCompare(a.date));

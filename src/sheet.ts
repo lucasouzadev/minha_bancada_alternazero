@@ -16,19 +16,36 @@ export function sheet(title: string, ...kids: (Node | null)[]): Sheet {
     if (closing) return closing;
     const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
     closing = new Promise<void>((res) => {
+      // sai a partir da posição atual (inclusive de onde o dedo soltou a alça), sem voltar ao topo antes
+      d.getAnimations().forEach((a) => a.finish());
       d.classList.add('closing');
-      const done = () => { d.classList.remove('closing'); d.style.transform = ''; d.close(); closing = null; res(); };
-      if (calm) done(); else setTimeout(done, 220);
+      const done = () => { d.classList.remove('closing', 'drag'); d.style.transform = ''; d.close(); closing = null; res(); };
+      if (calm) done(); else setTimeout(done, 250);
     });
     return closing;
   };
   d.addEventListener('cancel', (e) => { e.preventDefault(); void close(); });            // Esc
   d.addEventListener('click', (e) => { if (e.target === d) void close(); });             // toque fora
-  // arrastar a alça para baixo fecha
-  let y0: number | null = null, dy = 0;
-  head.addEventListener('pointerdown', (e) => { y0 = e.clientY; dy = 0; head.setPointerCapture(e.pointerId); d.classList.add('drag'); });
-  head.addEventListener('pointermove', (e) => { if (y0 === null) return; dy = Math.max(0, e.clientY - y0); d.style.transform = `translateY(${dy}px)`; });
-  const up = () => { if (y0 === null) return; y0 = null; d.classList.remove('drag'); if (dy > 70) void close(); else d.style.transform = ''; };
+  // alça: arrastar para baixo fecha (distância ou "peteleco"); tocar também fecha; para cima, resistência
+  let y0: number | null = null, dy = 0, t = 0, v = 0;
+  head.addEventListener('pointerdown', (e) => {
+    if (closing) return;
+    d.getAnimations().forEach((a) => a.finish());   // entrou há pouco: termina a entrada antes de arrastar
+    y0 = e.clientY; dy = 0; v = 0; t = performance.now(); head.setPointerCapture(e.pointerId); d.classList.add('drag');
+  });
+  head.addEventListener('pointermove', (e) => {
+    if (y0 === null) return;
+    const raw = e.clientY - y0, now = performance.now(), nd = raw >= 0 ? raw : -Math.sqrt(-raw) * 2;
+    v = (nd - dy) / Math.max(1, now - t); t = now; dy = nd;
+    d.style.transform = `translateY(${dy}px)`;
+  });
+  const up = () => {
+    if (y0 === null) return;
+    y0 = null;
+    const tap = Math.abs(dy) < 6;
+    if (tap || dy > 70 || (dy > 16 && v > 0.5)) { void close(); return; }
+    d.classList.remove('drag'); d.style.transform = '';
+  };
   head.addEventListener('pointerup', up); head.addEventListener('pointercancel', up);
   document.body.append(d);
   return { el: d, body, open: () => { if (!d.open) d.showModal(); }, close };
