@@ -418,7 +418,8 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     if (panoSrc) return { url: panoSrc, note: '' };
     const { rects, totalW, totalH } = dielineRects(d.w, d.h, d.d);
     panoRatio = totalW / totalH;
-    if (d.artMode === 'dieline' && d.art.dieline) return { url: (panoSrc = own(URL.createObjectURL(d.art.dieline))), note: '' };
+    const fullArt = d.fullArt ? await d.fullArt().catch(() => d.art) : d.art;
+    if (d.artMode === 'dieline' && fullArt.dieline) return { url: (panoSrc = own(URL.createObjectURL(fullArt.dieline))), note: '' };
     const t = await texSet();
     const has = !!t && FACES.some((f) => t[f]);
     if (!has) return { url: (panoSrc = own(await canvasUrl(templateCanvas(d.w, d.h, d.d)))), note: 'Sem arte enviada: mostrando o gabarito.' };
@@ -550,7 +551,10 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
       sheet.focus({ preventScroll: true });
     }, calm ? 0 : 140);
     // textura em alta, trocada quando chegar
-    heroTexP = buildTextures(s.drop, B.renderer.capabilities.getMaxAnisotropy(), 2048);
+    heroTexP = (async () => {
+      const art = s.drop.fullArt ? await s.drop.fullArt().catch(() => s.drop.art) : s.drop.art;   // alta resolução só ao abrir
+      return buildTextures({ ...s.drop, art }, B.renderer.capabilities.getMaxAnisotropy(), 2048);
+    })();
     heroTexP.then((t) => {
       if (current !== s || !hero) { Object.values(t).forEach((x) => x!.dispose()); return; }
       const nb = buildBox({ ...s.drop, textures: t });

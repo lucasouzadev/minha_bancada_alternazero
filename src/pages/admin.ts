@@ -8,7 +8,8 @@ import { createStage } from '../stage';
 import { FACES, FACE_LABEL, STATUS_LABEL, safeUrl, type Drop, type Face, type Finish, type Status } from '../types';
 import { go } from '../main';
 import { announce, fmtDate, h, icon, share, toast } from '../ui';
-import { REMOTE, sb } from '../remote';
+import { REMOTE } from '../remote';
+import { sb } from '../sb';
 import { makeOg } from '../og';
 
 export const FINISH_LABEL: Record<Finish, string> = { matte: 'Fosco', satin: 'Acetinado', gloss: 'Brilho' };

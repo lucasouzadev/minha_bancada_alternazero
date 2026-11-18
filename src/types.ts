@@ -68,6 +68,8 @@ export interface Drop {
   tissue: string;     // cor do papel de seda
   artMode: ArtMode;
   art: Partial<Record<'dieline' | Face, Blob>>;
+  /** Só no acervo (servidor): `art` traz miniaturas; isto baixa a arte cheia quando a caixa é aberta. */
+  fullArt?: () => Promise<Partial<Record<'dieline' | Face, Blob>>>;
   published: boolean;
   updatedAt: number;
 }
