@@ -92,10 +92,29 @@ test.describe('Acervo — funções @flow', () => {
     await openBox(page, 'ensaio');
     const lid = page.getByTestId('lid');
     await expect(lid).toHaveText('Abrir');
+    // "Abrir" leva ao espaço da caixa: folha desce inteira, barra com zoom, tampa, fundo e "Ficha"
     await lid.click();
-    await expect(lid).toHaveText('Fechar');
+    await expect(acervo(page)).toHaveClass(/focus/);
+    await expect(sheet(page)).not.toBeInViewport();
+    const bar = page.getByTestId('box-bar');
+    await expect(bar).toBeVisible();
+    await expectHitSize(page, bar.getByRole('button'), 'barra da caixa');
+    const t = page.getByTestId('lid-toggle');
+    await expect(t).toHaveText('Fechar tampa');
+    await t.click(); await expect(t).toHaveText('Abrir tampa');
+    await t.click(); await expect(t).toHaveText('Fechar tampa');
+    await page.getByTestId('theme').click();
+    await expect(acervo(page)).toHaveAttribute('data-theme', 'light');
+    await page.getByTestId('zoom-in').click();
+    await page.getByTestId('ficha').click();
+    await expect(acervo(page)).not.toHaveClass(/focus/);
+    await expect(sheet(page)).toBeInViewport({ ratio: 0.9 });
+    // Esc no espaço da caixa volta à ficha (não fecha a caixa)
     await lid.click();
-    await expect(lid).toHaveText('Abrir');
+    await expect(acervo(page)).toHaveClass(/focus/);
+    await page.keyboard.press('Escape');
+    await expect(acervo(page)).not.toHaveClass(/focus/);
+    await expect(acervo(page)).toHaveAttribute('data-open', 'ensaio');
     void errors;
   });
 
@@ -141,10 +160,9 @@ test.describe('Acervo — funções @flow', () => {
       const headH = (await sheet(page).locator('.sh-head').boundingBox())!.height;
       await expect.poll(async () => vp.height - (await sheet(page).boundingBox())!.y, { message: 'só o cabeçalho visível', timeout: 8000 }).toBeLessThanOrEqual(headH + 2);
       expect(headH, 'cabeçalho recolhido compacto (≤ 24% da tela)').toBeLessThanOrEqual(vp.height * 0.24);
-      const strip = sheet(page).locator('.sh-head');
-      await expect(strip.getByRole('button', { name: 'Abrir tampa' })).toBeVisible();
-      await strip.getByRole('button', { name: 'Abrir tampa' }).click();
-      await expect(strip.getByRole('button', { name: 'Fechar tampa' })).toBeVisible();
+      // recolher e fechar numa pílula só; "Abrir" só com a folha aberta
+      await expect(sheet(page).locator('.pill-ctl').getByRole('button')).toHaveCount(2);
+      await expect(page.getByTestId('lid')).toHaveCSS('opacity', '0');
     }
     await (bar ? page.getByTestId('peek-tab') : page.getByTestId('grab')).click();
     await expect(sheet(page)).not.toHaveClass(/peek/);

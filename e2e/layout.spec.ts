@@ -51,8 +51,19 @@ test.describe('Layout @layout', () => {
     void errors;
   });
 
-  test('editor (4 passos)', async ({ page, errors }) => {
+  test('painel do editor', async ({ page, errors }) => {
     await page.goto('/admin');
+    await expect(page.getByTestId('hub')).toBeVisible();
+    await expectNoHorizontalScroll(page, 'painel');
+    await expectReadableText(page, 'painel');
+    await expectHitSize(page, page.locator('.hub button:visible, .hub a:visible'), 'painel');
+    await expect(page.getByTestId('hub-new').locator('visible=true')).toHaveCount(1);   // um só "Novo drop" por tela
+    await shot(page, 'painel');
+    void errors;
+  });
+
+  test('editor (4 passos)', async ({ page, errors }) => {
+    await page.goto('/admin/novo');
     await expect(page.getByRole('heading', { name: /novo drop/i })).toBeVisible();
     const vp = page.viewportSize()!;
     const touch = await isTouch(page);

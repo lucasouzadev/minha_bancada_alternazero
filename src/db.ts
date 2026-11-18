@@ -1,5 +1,5 @@
 import { demoDieline } from './art';
-import { REMOTE, remoteDelete, remoteGet, remoteList, remoteMeta, remoteSave } from './remote';
+import { REMOTE, remoteDelete, remoteGet, remoteList, remoteMeta, remoteSave, remoteSetPublished } from './remote';
 import type { Drop } from './types';
 
 const STORE = 'drops', DRAFTS = 'drafts';
@@ -42,6 +42,12 @@ export async function getDrop(id: string) {
   return run<Drop | undefined>('readonly', (s) => s.get(id));
 }
 export async function getBySlug(slug: string) { return (await listDrops()).find((d) => d.slug === slug); }
+/** Publicar/despublicar ("remover acesso") sem mexer no resto do drop. */
+export async function setPublished(id: string, on: boolean) {
+  if (REMOTE) return remoteSetPublished(id, on);
+  const d = await run<Drop | undefined>('readonly', (s) => s.get(id));
+  if (d) { d.published = on; d.updatedAt = Date.now(); await run('readwrite', (s) => s.put(d)); }
+}
 export async function deleteDrop(id: string) {
   if (REMOTE) return remoteDelete(id);
   await run('readwrite', (s) => s.delete(id));
@@ -61,6 +67,16 @@ export const saveDraft = (key: string, d: Drop) => run('readwrite', (s) => s.put
 export const loadDraft = (key: string) => run<Draft | undefined>('readonly', (s) => s.get(key), DRAFTS).catch(() => undefined);
 export const clearDraft = (key: string) => run('readwrite', (s) => s.delete(key), DRAFTS).catch(() => undefined);
 
+/** Cópia em rascunho (com arte própria) guardada como "novo drop" no aparelho; o editor abre com ela. */
+export async function draftCopy(d: Drop) {
+  const copy: Drop = {
+    ...d, id: crypto.randomUUID(), name: `${d.name.trim() || 'Drop'} (cópia)`, slug: '', published: false,
+    items: [...d.items], tags: [...d.tags], updatedAt: Date.now(),
+    // blobs novos: o servidor guarda cada arquivo por drop, a cópia precisa do próprio upload
+    art: Object.fromEntries(Object.entries(d.art).map(([k, b]) => [k, new Blob([b as Blob], { type: (b as Blob).type })])) as Drop['art'],
+  };
+  await saveDraft('new', { ...copy, dup: true } as Drop);
+}
 export function newDrop(): Drop {
   return {
     id: crypto.randomUUID(), slug: '', name: '', subtitle: '', date: new Date().toISOString().slice(0, 10),

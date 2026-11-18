@@ -63,6 +63,14 @@ export async function remoteSave(drop: Drop, og?: Blob): Promise<Drop> {
   drop.updatedAt = Date.parse(updated_at); return drop;
 }
 
+/** Liga/desliga a publicação sem reenviar arte nem regravar os dados. */
+export async function remoteSetPublished(id: string, published: boolean) {
+  const { error } = await sb.from('drops').update({ published, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) throw error;
+}
+/** Miniatura do drop no servidor (a imagem do WhatsApp, gerada ao salvar). */
+export const remoteThumb = (id: string, v: number) => `${sb.storage.from(BUCKET).getPublicUrl(`${id}/og.jpg`).data.publicUrl}?v=${v}`;
+
 export async function remoteDelete(id: string) {
   const { data } = await sb.storage.from(BUCKET).list(id);
   if (data?.length) await sb.storage.from(BUCKET).remove(data.map((f) => `${id}/${f.name}`));

@@ -89,19 +89,27 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   const storeLink = h('a', { class: 'ghost store-link', target: '_blank', rel: 'noopener noreferrer', hidden: true, 'data-testid': 'store-link' }, icon('external', 18), 'Ver na loja');
   // alternar recolhida/aberta: um botão acessível; o cabeçalho inteiro também arrasta
   const grab = h('button', { class: 'ico sh-toggle', type: 'button', ariaLabel: 'Recolher detalhes', ariaExpanded: 'true', 'data-testid': 'grab', 'data-tip': 'Recolher' }, icon('chev'));
-  // "Abrir" compacto, só com a folha recolhida (no modo Caixa)
-  const peekLid = h('button', { class: 'pill sm', type: 'button', ariaLabel: 'Abrir tampa' }, 'Abrir');
   const peekTab = h('button', { class: 'peek-tab', type: 'button', hidden: true, 'data-testid': 'peek-tab' }, icon('chev'), 'Detalhes');
   /* ---------- modos: Caixa · Arte · Planificada (no cabeçalho da folha) ---------- */
   const modeBtns = MODES.map(([v, l]) => h('button', { type: 'button', role: 'radio', 'data-mode': v, 'data-testid': `mode-${v}`, 'aria-checked': String(v === 'box'), onclick: () => { void setMode(v); } }, l));
   const modes = h('div', { class: 'modes seg', role: 'radiogroup', ariaLabel: 'Modo de visualização' }, ...modeBtns);
   const head = h('div', { class: 'sh-head' },
     h('span', { class: 'sh-handle', 'aria-hidden': 'true' }),
-    h('div', { class: 'sh-row' }, h('div', { class: 'sh-tt' }, titleEl, metaEl), h('div', { class: 'sh-acts' }, peekLid, grab, closeBtn)),
+    h('div', { class: 'sh-row' }, h('div', { class: 'sh-tt' }, titleEl, metaEl), h('div', { class: 'pill-ctl' }, grab, h('span', { class: 'pill-sep', 'aria-hidden': 'true' }), closeBtn)),
     modes);
   const body = h('div', { class: 'sh-body' }, taglineEl, aboutBox, itemsBox, fichaEl, storeLink);
-  const foot = h('div', { class: 'sh-foot' }, openBtn, h('span', { class: 'sp' }), isShared ? null : ownBtn, shareBtn);
-  const sheet = h('section', { class: 'sheet', 'data-testid': 'sheet', role: 'dialog', 'aria-labelledby': 'sheet-title', tabIndex: -1 }, head, body, foot);
+  const foot = h('div', { class: 'sh-foot' }, isShared ? null : ownBtn, shareBtn);
+  const sheet = h('section', { class: 'sheet', 'data-testid': 'sheet', role: 'dialog', 'aria-labelledby': 'sheet-title', tabIndex: -1 }, head, body, foot, openBtn);
+  openBtn.classList.add('lid-fab');   // "Abrir" fica acima da folha (só no modo Caixa, com a folha aberta)
+  /* ---------- espaço da caixa: folha some, sobra a caixa com zoom, tampa e fundo ---------- */
+  const zOut = h('button', { class: 'ico', type: 'button', ariaLabel: 'Diminuir zoom', 'data-testid': 'zoom-out' }, icon('minus', 20));
+  const zIn = h('button', { class: 'ico', type: 'button', ariaLabel: 'Aumentar zoom', 'data-testid': 'zoom-in' }, icon('plus', 20));
+  const lidBar = h('button', { class: 'bar-btn', type: 'button', 'data-testid': 'lid-toggle' }, 'Fechar tampa');
+  const themeBtn = h('button', { class: 'ico', type: 'button', ariaLabel: 'Fundo claro', ariaPressed: 'false', 'data-testid': 'theme', 'data-tip': 'Fundo claro/escuro' }, icon('contrast', 20));
+  const fichaBtn = h('button', { class: 'bar-btn', type: 'button', 'data-testid': 'ficha' }, h('span', { class: 'up' }, icon('chev', 18)), 'Ficha');
+  const boxBar = h('div', { class: 'box-bar', role: 'toolbar', ariaLabel: 'Caixa aberta', 'data-testid': 'box-bar' },
+    zOut, zIn, h('span', { class: 'pill-sep', 'aria-hidden': 'true' }), lidBar, themeBtn, h('span', { class: 'pill-sep', 'aria-hidden': 'true' }), fichaBtn);
+  boxBar.inert = true;
   sheet.inert = true;
 
   const shareCol = h('button', { class: 'ico', ariaLabel: 'Compartilhar coleção', 'data-tip': 'Compartilhar coleção', 'data-testid': 'share-collection', onclick: async () => {
@@ -137,7 +145,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   const tagBtns = ['', ...tagList].map((t) => h('button', { class: 'chip', type: 'button', 'data-tag': t, 'data-testid': t ? 'tag-chip' : 'tag-all', 'aria-pressed': String(t === ''), onclick: () => applyTag(t) }, t || 'Todas'));
   const tagbar = h('nav', { class: 'tagbar', ariaLabel: 'Filtrar por tag', 'data-testid': 'tagbar', hidden: tagList.length === 0 }, ...tagBtns);
   const acervoEl = h('div', { class: 'acervo', 'data-testid': 'acervo' },
-      shelfCanvas, header, tagbar, rowsEl, veil, heroCanvas, artView, sheet, peekTab);
+      shelfCanvas, header, tagbar, rowsEl, veil, heroCanvas, artView, sheet, boxBar, peekTab);
   if (calm) acervoEl.classList.add('calm');
   root.append(acervoEl);
   groupRows();
@@ -235,7 +243,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   const hx = sp(110, 15), hy = sp(110, 15), hs = sp(120, 14);
   const rx = sp(90, 14), ry = sp(70, 11), lid = sp(90, 15);
   let lidOn = false, idleAt = 0, closeAt = 0, sc = 1;
-  let peek = false, mode: Mode = 'box';
+  let peek = false, autoPeek = false, focus = false, zoomK = 1, zoomT = 1, mode: Mode = 'box';
   let heroTexP: Promise<Tex> | null = null;
 
   /** Região livre para a caixa aberta: acima da folha (folha embaixo) ou à esquerda dela (painel lateral). */
@@ -244,6 +252,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     const sa = { t: parseFloat(v.paddingTop) || 0, r: parseFloat(v.paddingRight) || 0, b: parseFloat(v.paddingBottom) || 0, l: parseFloat(v.paddingLeft) || 0 };
     const m = Math.round(Math.max(14, Math.min(40, Math.min(W, H) * 0.04)));
     const imm = acervoEl.classList.contains('immersive');
+    if (focus) return { x0: sa.l + m, y0: sa.t + m, x1: W - sa.r - m, y1: H - sa.b - 84 };
     if (docked() === 'side')
       return { x0: sa.l + m, y0: sa.t + m, x1: (peek || imm ? W - sa.r : sheet.offsetLeft) - m, y1: H - sa.b - m };
     const bottom = imm ? H - sa.b : peek ? H - head.offsetHeight - sa.b : sheet.offsetTop;
@@ -334,10 +343,8 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     ownBtn.dataset.tip = on ? 'No seu acervo' : 'Tenho esta caixa';
   }
   function setLidUi(on: boolean) {
-    lidOn = on; openBtn.textContent = on ? 'Fechar' : 'Abrir';
-    openBtn.ariaLabel = on ? 'Fechar tampa' : 'Abrir tampa';
-    openBtn.classList.toggle('on', on);
-    peekLid.textContent = openBtn.textContent; peekLid.ariaLabel = openBtn.ariaLabel;
+    lidOn = on;
+    lidBar.textContent = on ? 'Fechar tampa' : 'Abrir tampa'; lidBar.ariaPressed = String(on);
   }
 
   /** Filtra a prateleira por tag (tocar na tag ativa, ou em "Todas", mostra tudo de novo). */
@@ -369,9 +376,8 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     if (!on) setTimeout(() => { if (current === slotNow() && !closing && !peek) sheet.focus({ preventScroll: true }); }, 0);
   }
   const slotNow = () => current;
-  grab.onclick = () => { if (!justDragged) setPeek(!peek); };
+  grab.onclick = () => { if (!justDragged) { autoPeek = false; setPeek(!peek); } };
   peekTab.onclick = () => setPeek(false);
-  peekLid.onclick = () => toggleLid();
   let justDragged = false;
 
   /* ---------- modos Caixa · Arte · Planificada ---------- */
@@ -460,8 +466,8 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     artView.hidden = !art; artView.classList.toggle('pano', m === 'pano'); artView.classList.toggle('face', m === 'art');
     heroCanvas.style.visibility = art ? 'hidden' : '';
     zoom?.reset();
-    if (!art) { artNote.hidden = true; setImmersive(false); if (hero) fitHero(); announce('Caixa em 3D'); return; }
-    if (docked() !== 'side' && !peek) setPeek(true);   // celular: a folha recolhe sozinha para a arte ganhar espaço
+    if (!art) { artNote.hidden = true; setImmersive(false); if (autoPeek) { autoPeek = false; setPeek(false); } if (hero) fitHero(); announce('Caixa em 3D'); return; }
+    if (docked() !== 'side' && !peek) { setPeek(true); autoPeek = true; }   // celular: a folha recolhe sozinha para a arte ganhar espaço
     placeArt();
     if (m === 'art') { guidesSvg.replaceChildren(); artLabels.replaceChildren(); artNote.hidden = true; await showFace(face); announce('Arte da caixa'); }
     else {
@@ -476,13 +482,34 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   function resetView(dropArt = false) {
     peek = false; sheet.classList.remove('peek'); acervoEl.classList.remove('peeked'); peekTab.hidden = true;
     grab.ariaExpanded = 'true'; grab.ariaLabel = 'Recolher detalhes';
-    body.inert = foot.inert = false; acervoEl.classList.remove('immersive'); faceTabs.inert = guidesBtn.inert = false;
+    body.inert = foot.inert = false; acervoEl.classList.remove('immersive', 'focus'); faceTabs.inert = guidesBtn.inert = false;
+    focus = false; autoPeek = false; zoomT = 1; boxBar.inert = true; setTheme(false);
     mode = 'box'; ++buildToken; delete acervoEl.dataset.mode;
     modeBtns.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === 'box')));
     artView.hidden = true; heroCanvas.style.visibility = ''; artView.classList.remove('guides', 'pano', 'face'); guidesBtn.ariaPressed = 'false';
     zoom?.reset(); face = 'front';
     if (dropArt) { artImg.removeAttribute('src'); releaseArt(); }
   }
+  /** Espaço da caixa: a folha desce inteira; ficam a caixa e uma barra com zoom, tampa, fundo e "Ficha". */
+  function setFocus(on: boolean) {
+    if (!current || closing || focus === on) return;
+    focus = on; acervoEl.classList.toggle('focus', on);
+    boxBar.inert = !on; sheet.inert = on;
+    if (!on) { zoomT = 1; sheet.focus({ preventScroll: true }); } else lidBar.focus({ preventScroll: true });
+    announce(on ? 'Caixa em tela cheia. Barra com zoom, tampa e fundo embaixo.' : 'Ficha à mostra');
+    refit();
+  }
+  function setTheme(light: boolean) {
+    if (light) acervoEl.dataset.theme = 'light'; else delete acervoEl.dataset.theme;
+    themeBtn.ariaPressed = String(light); themeBtn.ariaLabel = light ? 'Fundo escuro' : 'Fundo claro';
+  }
+  const zoomBy = (f: number) => { zoomT = Math.max(0.6, Math.min(3, zoomT * f)); idleAt = performance.now() + 3000; };
+  openBtn.onclick = () => { if (!lidOn) toggleLid(); setFocus(true); };
+  lidBar.onclick = () => toggleLid();
+  fichaBtn.onclick = () => setFocus(false);
+  zIn.onclick = () => zoomBy(1.25); zOut.onclick = () => zoomBy(0.8);
+  themeBtn.onclick = () => setTheme(acervoEl.dataset.theme !== 'light');
+
   /** Tela cheia na Arte/Planificada: um toque esconde folha e controles (como o app Fotos); outro toque traz de volta. */
   function setImmersive(on: boolean) {
     if (acervoEl.classList.contains('immersive') === on) return;
@@ -572,7 +599,7 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   };
   closeBtn.onclick = uiClose; veil.onclick = uiClose;
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') uiClose();
+    if (e.key === 'Escape') { if (focus) setFocus(false); else uiClose(); }
     // setas giram a caixa aberta (teclado)
     else if (!current && /^(Arrow(Left|Right|Up|Down)|Home|End)$/.test(e.key)) {
       // setas navegam entre as caixas da prateleira (grade de --c colunas)
@@ -598,7 +625,6 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     if (lidOn) { ry.t = Math.round(ry.x / TAU) * TAU; rx.t = 0.08; }
     fitHero(); idleAt = performance.now() + 2500;
   };
-  openBtn.onclick = toggleLid;
 
   ownBtn.onclick = () => {
     if (!current) return;
@@ -632,12 +658,21 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   }
   const onHero = (x: number, y: number) => { const r = heroRect(); return x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1; };
 
+  // pinça (dois dedos) e roda do mouse dão zoom na caixa; um dedo gira
+  const pts = new Map<number, { x: number; y: number }>();
+  let pinch: { d: number; z: number } | null = null;
+  const pdist = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y) || 1; };
   heroCanvas.addEventListener('pointerdown', (e) => {
     if (!hero || closing) return;
-    drag = { x: e.clientX, y: e.clientY, dx: 0, x0: e.clientX, y0: e.clientY, t0: performance.now(), moved: false };
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     heroCanvas.setPointerCapture(e.pointerId);
+    if (pts.size === 2) { pinch = { d: pdist(), z: zoomT }; drag = null; heroCanvas.classList.remove('grabbing'); return; }
+    drag = { x: e.clientX, y: e.clientY, dx: 0, x0: e.clientX, y0: e.clientY, t0: performance.now(), moved: false };
   });
+  heroCanvas.addEventListener('wheel', (e) => { if (!hero || closing || mode !== 'box') return; e.preventDefault(); zoomBy(Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
   heroCanvas.addEventListener('pointermove', (e) => {
+    const p = pts.get(e.pointerId); if (p) { p.x = e.clientX; p.y = e.clientY; }
+    if (pinch && pts.size === 2) { zoomT = Math.max(0.6, Math.min(3, pinch.z * pdist() / pinch.d)); idleAt = performance.now() + 3000; return; }
     if (!drag) {
       if (hero && !closing && e.pointerType === 'mouse') heroCanvas.style.cursor = onHero(e.clientX, e.clientY) ? 'grab' : '';
       return;
@@ -650,6 +685,8 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
     idleAt = performance.now() + 2500;
   });
   const endDrag = (e: PointerEvent) => {
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
     if (!drag) return;
     const d = drag; drag = null; heroCanvas.classList.remove('grabbing');
     if (d.moved) { ry.t = ry.x + d.dx * 0.012 * (calm ? 2 : 7); idleAt = performance.now() + 2500; return; }
@@ -706,7 +743,8 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
         if (drag?.moved && (s === rx || s === ry)) return; s.step(dt);
       });
       const pw = B.toWorld(hx.x, hy.x);
-      hero.group.position.set(pw.x, pw.y, 0); hero.group.scale.setScalar(hs.x);
+      zoomK += (zoomT - zoomK) * Math.min(1, dt * 10);
+      hero.group.position.set(pw.x, pw.y, 0); hero.group.scale.setScalar(hs.x * zoomK);
       hero.group.rotation.set(rx.x, ry.x, 0); hero.setOpen(lid.x);
       if (mode === 'box' || closing) B.render();
       if (closing && ((hx.done && hy.done && hs.done && ry.done && rx.done) || now - closeAt > 1100)) finishClose();

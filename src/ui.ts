@@ -86,6 +86,8 @@ const ICONS: Record<string, string> = {
   list: '<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   chev: '<path d="M9 5l7 7-7 7"/>',
+  minus: '<path d="M5 12h14"/>',
+  contrast: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17z" fill="currentColor"/>',
 };
 export function icon(name: keyof typeof ICONS | string, size = 22) {
   const s = document.createElement('span'); s.className = 'ico-svg'; s.setAttribute('aria-hidden', 'true');

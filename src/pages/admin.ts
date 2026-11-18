@@ -1,7 +1,8 @@
 import type * as THREE from 'three';
 import { buildTextures, imageSize, normalizeUpload, templateCanvas, demoDieline } from '../art';
 import { buildBox, type BuiltBox } from '../box';
-import { clearDraft, deleteDrop, getDrop, listDropMeta, loadDraft, newDrop, saveDraft, saveDrop, slugify } from '../db';
+import { clearDraft, deleteDrop, draftCopy, getDrop, listDropMeta, loadDraft, newDrop, saveDraft, saveDrop, slugify } from '../db';
+import { action, confirmSheet, sheet } from '../sheet';
 import { dielineRects } from '../layout';
 import { createStage } from '../stage';
 import { FACES, FACE_LABEL, STATUS_LABEL, safeUrl, type Drop, type Face, type Finish, type Status } from '../types';
@@ -27,7 +28,7 @@ export function saveError(e: any): string {
   return m ? `Não foi possível salvar: ${m.slice(0, 90)}` : 'Não foi possível salvar.';
 }
 
-async function loginGate(root: HTMLElement): Promise<boolean> {
+export async function loginGate(root: HTMLElement): Promise<boolean> {
   if (!REMOTE) return true;
   const back = () => h('a', { class: 'txt', href: '/', 'data-link': true }, 'Voltar ao acervo');
   if ((await sb.auth.getSession()).data.session) {
@@ -342,8 +343,8 @@ export async function adminPage(root: HTMLElement, id?: string) {
         h('button', { class: 'ghost sm', type: 'button', onclick: () => { void share(drop.name, `Veja a caixa ${drop.name} em 3D`, url); } }, icon('share', 18), 'Compartilhar')),
       ...(drop.published ? [] : [h('p', { class: 'hint' }, 'Rascunho: só aparece no acervo depois de publicado.')]),
       h('div', { class: 'act-list done-more' },
-        h('button', { type: 'button', onclick: () => go('/admin') }, icon('plus', 20), 'Criar outro drop'),
-        h('button', { type: 'button', onclick: () => { buildPicker(); pickDlg.showModal(); } }, icon('list', 20), 'Abrir outro drop')));
+        h('a', { class: 'act', href: '/admin/novo', 'data-link': true }, icon('plus', 20), h('span', { class: 'act-tx' }, h('b', {}, 'Criar outro drop'), h('small', {}, 'Começa um drop do zero.'))),
+        h('a', { class: 'act', href: '/admin', 'data-link': true }, icon('list', 20), h('span', { class: 'act-tx' }, h('b', {}, 'Ver todos os drops'), h('small', {}, 'Volta ao painel com os lançamentos.')))));
     foot.replaceChildren(
       h('button', { class: 'ghost', type: 'button', 'data-testid': 'edit-again', onclick: () => show(0) }, 'Editar'),
       drop.published
@@ -383,8 +384,8 @@ export async function adminPage(root: HTMLElement, id?: string) {
   // ---------- estrutura ----------
   let step = 0;
   const heading = h('h2', {}, isNew ? 'Novo drop' : 'Editar drop');
-  const backLink = h('a', { class: 'ico', href: '/', 'data-link': true, ariaLabel: 'Voltar ao acervo' }, icon('back', 22));
-  const menuBtn = h('button', { class: 'ico', type: 'button', ariaLabel: 'Mais ações', 'aria-haspopup': 'dialog', 'data-testid': 'menu', onclick: () => { buildMenu(); menuDlg.showModal(); } }, icon('more', 22));
+  const backLink = h('a', { class: 'ico', href: '/admin', 'data-link': true, ariaLabel: 'Voltar para todos os drops' }, icon('back', 22));
+  const menuBtn = h('button', { class: 'ico', type: 'button', ariaLabel: 'Mais ações', 'aria-haspopup': 'dialog', 'data-testid': 'menu', onclick: () => openMenu() }, icon('more', 22));
   const stepBtns = STEPS.map((name, i) => h('button', { type: 'button', 'data-testid': `step-${i}`, 'aria-label': `Passo ${i + 1} de ${STEPS.length}: ${name}`, onclick: () => { if (i > step && step === 0 && !drop.name.trim()) { showNameError(); nameIn.focus(); return; } show(i); } },
     h('span', { class: 'bar' }), h('span', { class: 'lbl' }, h('b', {}, String(i + 1)), h('span', { class: 'nm' }, ` ${name}`))));
   const lidBtn = h('button', { class: 'ghost', type: 'button', ariaPressed: 'false', onclick: () => {
@@ -401,7 +402,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
     ...sections, doneEl);
   const foot = h('div', { class: 'ed-foot' });
   const ed = h('div', { class: 'ed', 'data-mode': isNew ? 'new' : 'edit' },
-    h('header', { class: 'ed-top' }, backLink, h('div', { class: 'ed-title' }, heading, titleSub), stateChip, menuBtn),
+    h('header', { class: 'ed-top' }, backLink, h('div', { class: 'ed-title' }, heading, titleSub), menuBtn),
     h('nav', { class: 'ed-steps', ariaLabel: 'Etapas' }, h('ol', {}, ...stepBtns.map((b) => h('li', {}, b)))),
     h('div', { class: 'ed-stage', 'data-testid': 'preview' }, previewHost, h('div', { class: 'stage-bar' }, lidBtn, grow)),
     scroller, foot);
@@ -411,15 +412,17 @@ export async function adminPage(root: HTMLElement, id?: string) {
     ed.dataset.mode = isNew ? 'new' : 'edit';
     if (!isDone) renderFoot();
   }
+  /** Rodapé: um único botão principal (Continuar ou Salvar); voltar/avançar viram setas compactas. */
   function renderFoot() {
     const last = step === STEPS.length - 1;
+    const prev = h('button', { class: 'ghost icon-btn', type: 'button', 'data-testid': 'prev', ariaLabel: 'Passo anterior', onclick: () => show(step - 1) }, icon('back', 22));
+    const fwd = h('button', { class: 'ghost icon-btn', type: 'button', 'data-testid': 'next', ariaLabel: 'Próximo passo', onclick: () => show(step + 1) }, h('span', { class: 'flip' }, icon('back', 22)));
     const next = h('button', { class: 'primary', type: 'button', 'data-testid': 'next', onclick: () => {
       if (step === 0 && !drop.name.trim()) { showNameError(); nameIn.focus(); return; }
       show(step + 1);
     } }, 'Continuar');
-    const back = h('button', { class: 'ghost', type: 'button', 'data-testid': 'prev', onclick: () => show(step - 1) }, 'Voltar');
-    if (!isNew) foot.replaceChildren(...(step > 0 ? [back] : []), saveBtn, ...(last ? [] : [h('button', { class: 'ghost', type: 'button', 'data-testid': 'next', onclick: () => show(step + 1) }, 'Continuar')]));
-    else foot.replaceChildren(...(step > 0 ? [back] : []), last ? saveBtn : next);
+    if (!isNew) foot.replaceChildren(...(step > 0 ? [prev] : []), saveBtn, ...(last ? [] : [fwd]));
+    else foot.replaceChildren(...(step > 0 ? [prev] : []), last ? saveBtn : next);
   }
   function show(n: number) {
     if (isDone) { isDone = false; ed.classList.remove('is-done'); doneEl.hidden = true; }
@@ -434,56 +437,31 @@ export async function adminPage(root: HTMLElement, id?: string) {
     announce(`Passo ${step + 1} de ${STEPS.length}: ${STEPS[step]}`);
   }
 
-  // ---------- menu e seletor de drop ----------
-  const dlg = (label: string, ...kids: (Node | null)[]) => {
-    const head = h('div', { class: 'dlg-head' }, h('span', { class: 'sh-handle', 'aria-hidden': 'true' }), h('p', { class: 'dlg-title' }, label));
-    const d = h('dialog', { class: 'sheet-dlg', ariaLabel: label }, head, ...kids);
-    d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
-    // mesma folha do acervo: arrastar a alça para baixo fecha
-    let y0: number | null = null, dy = 0;
-    head.addEventListener('pointerdown', (e) => { y0 = e.clientY; dy = 0; head.setPointerCapture(e.pointerId); d.classList.add('drag'); });
-    head.addEventListener('pointermove', (e) => { if (y0 === null) return; dy = Math.max(0, e.clientY - y0); d.style.transform = `translateY(${dy}px)`; });
-    const up = () => { if (y0 === null) return; y0 = null; d.classList.remove('drag'); d.style.transform = ''; if (dy > 70) d.close(); };
-    head.addEventListener('pointerup', up); head.addEventListener('pointercancel', up);
-    return d;
-  };
-  const menuList = h('div', { class: 'act-list' });
-  const menuDlg = dlg('Ações', menuList);
-  const pickList = h('div', { class: 'act-list' });
-  const pickDlg = dlg('Abrir outro drop', pickList);
-  const act = (label: string, ico: string, fn: () => void, cls = '') => h('button', { class: cls, type: 'button', onclick: () => { menuDlg.close(); fn(); } }, icon(ico, 20), label);
-  function buildMenu() {
-    const items: (HTMLElement | null)[] = [
-      act('Abrir outro drop', 'list', () => { buildPicker(); pickDlg.showModal(); }),
-      !isNew ? act('Novo drop', 'plus', () => go('/admin')) : null,
-      act('Duplicar drop', 'copy', duplicate),
-      !isNew ? act('Ver página', 'external', () => go(`/c/${encodeURIComponent(drop.slug)}?preview`)) : null,
-      !isNew ? act('Excluir drop', 'trash', async () => {
-        if (!confirm(`Excluir "${drop.name}"? Isso não pode ser desfeito.`)) return;
-        await deleteDrop(drop.id); await clearDraft(drop.id); toast('Drop excluído'); go('/admin');
-      }, 'act-danger') : null,
-      h('button', { type: 'button', class: 'cancel', onclick: () => menuDlg.close() }, 'Cancelar')];
-    menuList.replaceChildren(...items.filter((x): x is HTMLElement => !!x));
+  // ---------- menu de ações (folha; cada ação explica o que faz e pede confirmação quando muda algo) ----------
+  function openMenu() {
+    const run = async (fn: () => unknown) => { await m.close(); m.el.remove(); await fn(); };
+    const m = sheet('Ações',
+      action('Todos os drops', 'Volta ao painel com os lançamentos. O que não foi salvo fica guardado no aparelho.', 'list', () => run(() => go('/admin')), { testid: 'act-all' }),
+      !isNew ? action('Novo drop', 'Começa um drop do zero.', 'plus', () => run(() => go('/admin/novo')), { testid: 'act-new' }) : null,
+      action('Duplicar drop', 'Cria uma cópia em rascunho, com a mesma arte, para ajustar.', 'copy', () => run(duplicate), { testid: 'act-dup' }),
+      !isNew && drop.published ? action('Ver no acervo', `Abre a página pública /c/${drop.slug}.`, 'external', () => run(() => go(`/c/${encodeURIComponent(drop.slug)}`)), { testid: 'act-view' }) : null,
+      !isNew ? action('Excluir drop', 'Apaga o drop, a arte e o link. Não dá para desfazer.', 'trash', () => run(remove), { danger: true, testid: 'act-del' }) : null,
+      h('button', { type: 'button', class: 'act cancel', onclick: () => void m.close() }, 'Cancelar'));
+    m.el.addEventListener('close', () => m.el.remove(), { once: true });
+    m.open();
   }
-  function buildPicker() {
-    pickList.replaceChildren(
-      ...all.map((d) => h('button', { type: 'button', 'aria-current': d.id === drop.id ? 'true' : null, onclick: () => { pickDlg.close(); if (d.id !== drop.id) go(`/admin/${d.id}`); } },
-        h('span', { class: 'pk' }, h('b', {}, d.name), h('small', {}, [d.subtitle, d.published ? '' : 'Rascunho'].filter(Boolean).join(' · ') || ' ')))),
-      h('button', { type: 'button', class: 'cancel', onclick: () => pickDlg.close() }, 'Fechar'));
-    if (!all.length) pickList.prepend(h('p', { class: 'hint pad' }, 'Nenhum drop salvo ainda.'));
+  async function remove() {
+    const ok = await confirmSheet({ title: `Excluir "${drop.name}"?`, body: `Apaga o drop, a arte e o link /c/${drop.slug}. Não dá para desfazer.`, confirm: 'Excluir', danger: true });
+    if (!ok) return;
+    await deleteDrop(drop.id); await clearDraft(drop.id); toast('Drop excluído'); go('/admin');
   }
   async function duplicate() {
-    const copy: Drop = {
-      ...drop, id: crypto.randomUUID(), name: `${drop.name.trim() || 'Drop'} (cópia)`, slug: '', published: false,
-      items: [...drop.items], tags: [...drop.tags], updatedAt: Date.now(),
-      // blobs novos: o servidor guarda cada arquivo por drop, a cópia precisa do próprio upload
-      art: Object.fromEntries(Object.entries(drop.art).map(([k, b]) => [k, new Blob([b as Blob], { type: (b as Blob).type })])) as Drop['art'],
-    };
-    await saveDraft('new', { ...copy, dup: true } as Drop);
+    const ok = await confirmSheet({ title: `Duplicar "${drop.name.trim() || 'este drop'}"?`, body: 'Cria uma cópia em rascunho, com a mesma arte e ficha. Ela abre no editor para você ajustar o nome e salvar.', confirm: 'Duplicar' });
+    if (!ok) return;
+    await draftCopy(drop);
     toast('Cópia criada: ajuste e salve');
-    if (isNew) go(location.pathname); else go('/admin');
+    if (isNew) go(location.pathname); else go('/admin/novo');
   }
-  root.append(menuDlg, pickDlg);
 
   // ---------- teclado e tela ----------
   // O editor ocupa só a área visível (acima do teclado): rodapé sempre à mão, nada grudado/sobreposto.
@@ -505,10 +483,14 @@ export async function adminPage(root: HTMLElement, id?: string) {
   // Enter num campo avança o passo (como o "próximo" do teclado do celular)
   ed.addEventListener('keydown', (e) => {
     const t = e.target as HTMLElement;
-    if (e.key !== 'Enter' || !(t instanceof HTMLInputElement) || NO_KB.has(t.type) || step >= STEPS.length - 1) return;
-    e.preventDefault(); (document.activeElement as HTMLElement)?.blur();
+    if (e.key !== 'Enter' || !(t instanceof HTMLInputElement) || NO_KB.has(t.type)) return;
+    e.preventDefault();
     if (step === 0 && !drop.name.trim()) { showNameError(); nameIn.focus(); return; }
-    show(step + 1);
+    const fields = [...sections[step].querySelectorAll<HTMLElement>('input, textarea')].filter((f) => typesText(f) && f.offsetParent);
+    const nextField = fields[fields.indexOf(t) + 1];
+    if (nextField) { nextField.focus(); return; }
+    t.blur();
+    if (step < STEPS.length - 1) show(step + 1);
   });
   scroller.addEventListener('input', persist); scroller.addEventListener('change', persist);
 
@@ -526,7 +508,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
     removeEventListener('keydown', onKey); removeEventListener('pageshow', onShow);
     removeEventListener('pagehide', flush); document.removeEventListener('visibilitychange', onHide);
     vv?.removeEventListener('resize', size); vv?.removeEventListener('scroll', size);
-    menuDlg.remove(); pickDlg.remove();
+    document.querySelectorAll('dialog.sheet-dlg').forEach((x) => x.remove());
     urls.forEach((u) => URL.revokeObjectURL(u));
     stage.dispose(); box?.dispose(); Object.values(texs).forEach((t) => t!.dispose());
   };

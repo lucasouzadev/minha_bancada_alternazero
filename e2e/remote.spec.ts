@@ -18,7 +18,7 @@ test.describe('Produção @remote', () => {
     await page.getByPlaceholder('senha').fill(PASS);
     await page.getByRole('button', { name: 'Entrar' }).click();
     await expect(page.getByText(/não é editora/i), 'conta precisa estar em public.admins (supabase/fix-01-admin.sql)').toHaveCount(0);
-    await expect(page.getByRole('heading', { name: /novo drop/i })).toBeVisible();
+    await expect(page.getByTestId('hub')).toBeVisible();
   });
 
   test('cria e publica um drop (gera a imagem do WhatsApp)', async ({ page }) => {
@@ -26,6 +26,7 @@ test.describe('Produção @remote', () => {
     await page.getByPlaceholder('e-mail').fill(EMAIL);
     await page.getByPlaceholder('senha').fill(PASS);
     await page.getByRole('button', { name: 'Entrar' }).click();
+    await page.getByTestId('hub-new').last().click();
     await page.getByLabel('Nome', { exact: true }).fill(name);
     await page.getByTestId('next').click(); await page.getByTestId('next').click();
     await page.getByRole('button', { name: 'Usar arte de exemplo' }).click();
@@ -63,6 +64,7 @@ test.describe('Produção @remote', () => {
     page.once('dialog', (d) => d.accept());
     await page.getByTestId('menu').click();
     await page.getByRole('dialog').getByRole('button', { name: /excluir/i }).click();
+    await page.getByTestId('confirm-yes').click();
     await expect(page).toHaveURL(/\/admin$/);
   });
 });

@@ -2,17 +2,21 @@ import '@fontsource/barlow-condensed/600.css';
 import '@fontsource/barlow-condensed/700.css';
 import { acervoPage, type Page } from './pages/acervo';
 import { adminPage } from './pages/admin';
+import { hubPage } from './pages/hub';
 
 const root = document.getElementById('app')!;
 let page: Page | undefined, kind = '';
 
 export function go(path: string) { history.pushState({}, '', path); route(); }
 
+/** /admin = painel com todos os drops · /admin/novo = criar · /admin/:id = editar · resto = acervo público. */
 async function route() {
-  const k = location.pathname.startsWith('/admin') ? 'admin' : 'acervo';
+  const [, top, sub] = location.pathname.split('/');
+  const k = top === 'admin' ? (sub ? 'editor' : 'hub') : 'acervo';
   if (page && kind === k && page.sync) { page.sync(); return; }
   page?.cleanup(); root.replaceChildren(); kind = k;
-  if (k === 'admin') { const c = await adminPage(root, location.pathname.split('/')[2]); page = { cleanup: () => c && c() }; }
+  if (k === 'hub') { const c = await hubPage(root); page = { cleanup: () => c && c() }; }
+  else if (k === 'editor') { const c = await adminPage(root, sub === 'novo' ? undefined : sub); page = { cleanup: () => c && c() }; }
   else page = await acervoPage(root);
 }
 addEventListener('popstate', route);
