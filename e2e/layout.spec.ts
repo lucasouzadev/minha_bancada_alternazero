@@ -69,6 +69,7 @@ test.describe('Layout @layout', () => {
     const touch = await isTouch(page);
     const name = page.getByLabel('Nome', { exact: true });
     await name.fill('Layout');
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());   // teclado fechado (rodapé volta)
     const wide = vp.width >= 1024 || (vp.width >= 700 && vp.height <= 500);
 
     for (let n = 0; n < 4; n++) {
