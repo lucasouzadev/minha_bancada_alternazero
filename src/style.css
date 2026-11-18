@@ -249,7 +249,9 @@ html:has(.acervo){scroll-snap-type:y proximity}
   border:1px solid rgba(255,255,255,.1);border-radius:999px;background:rgba(19,19,23,.86);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   box-shadow:0 18px 40px -16px rgba(0,0,0,.8);opacity:0;pointer-events:none;transition:opacity .25s var(--ease-out),transform .35s var(--ease-spring);max-width:calc(100% - 24px)}
 .acervo.focus .box-bar{opacity:1;transform:translate(-50%,0);pointer-events:auto}
-.box-bar .ico{color:var(--fg)}
+.box-bar .ico{color:var(--fg);flex:none}
+.box-bar .pill-sep{margin:0 2px}
+@media (max-width:389px){.box-bar{gap:0;padding:4px 2px}.bar-btn{padding:0 10px}.box-bar .pill-sep{margin:0}}
 .bar-btn{display:inline-flex;align-items:center;gap:6px;min-height:var(--hit);padding:0 14px;border:0;border-radius:999px;background:none;color:var(--fg);font:500 14px/1 system-ui,sans-serif;white-space:nowrap}
 @media (hover:hover){.bar-btn:hover{background:rgba(255,255,255,.07)}}
 .bar-btn .up .ico-svg{transform:rotate(-90deg)}
