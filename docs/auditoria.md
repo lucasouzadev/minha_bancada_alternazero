@@ -26,8 +26,10 @@ Testes: `e2e/security.spec.ts` grava payloads de XSS em todos os campos, tenta `
 | Acervo com admin logado | baixava a arte de **todos** os drops, inclusive rascunhos | filtra `published` no servidor antes de baixar |
 | Cache | padrão | `/assets/*` imutável por 1 ano; ícones/manifest 1 dia |
 | Navegação rápida entre rotas | páginas antigas podiam ficar vivas | descarta a página que terminou de carregar atrasada |
+| Cliente Supabase no acervo | `supabase-js` (216 KB, 56 KB gzip) no JS inicial | fora do inicial: o acervo lê por `fetch` na REST; só o editor/painel baixam o cliente |
+| Arte na prateleira | arte cheia de cada drop | miniatura `-s.webp` (≤768 px; 1600 px na faca) gravada ao salvar; a arte cheia só baixa ao abrir a caixa (herói e Planificada). Drops antigos sem miniatura continuam funcionando (usam a arte cheia) e ganham miniatura ao reenviar a arte |
 
-Em aberto (maior ganho restante): `three` + `supabase-js` são ~150 KB gzip; trocar o cliente Supabase do acervo por `fetch` direto na REST e carregar a arte em resolução de prateleira (miniaturas) em vez da arte cheia.
+Em aberto: gerar miniaturas dos drops já publicados (hoje só nascem quando a arte é reenviada); `three` (~130 KB gzip) segue no JS inicial — é o núcleo do acervo.
 
 ## Boas práticas, acessibilidade, privacidade
 

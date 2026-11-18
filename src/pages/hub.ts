@@ -1,6 +1,7 @@
 import { clearDraft, deleteDrop, draftCopy, getDrop, listDropMeta, setPublished } from '../db';
 import { go } from '../main';
-import { REMOTE, remoteThumb, sb } from '../remote';
+import { REMOTE, remoteThumb } from '../remote';
+import { sb } from '../sb';
 import { action, confirmSheet, sheet } from '../sheet';
 import { STATUS_LABEL, safeHex, type Drop } from '../types';
 import { announce, fmtDate, h, icon, toast } from '../ui';
