@@ -127,7 +127,7 @@ test.describe('Editor — funções @flow', () => {
   test('editar um drop existente carrega os dados (seletor de drop)', async ({ page, errors }) => {
     await openAcervo(page);
     await page.goto('/admin');
-    await page.getByRole('link', { name: 'Editar Ensaio' }).click();
+    await page.locator('.hub-row', { hasText: 'Ensaio' }).locator('a.hub-main').click();
     await expect(page).toHaveURL(/\/admin\/[0-9a-f-]{36}$/);
     await expect(name(page)).toHaveValue('Ensaio');
     await expect(page.getByRole('heading', { name: /editar drop/i })).toBeVisible();
