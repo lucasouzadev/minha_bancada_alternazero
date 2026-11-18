@@ -70,8 +70,6 @@ test.describe('Segurança @flow', () => {
 
 /** axe-core (WCAG 2.1 A/AA): sem violações sérias/críticas nas telas principais. */
 async function axe(page: Page, where: string) {
-  // mede depois das animações de entrada (opacidade parcial engana o cálculo de contraste)
-  await expect.poll(() => page.evaluate(() => document.getAnimations().filter((a) => a.playState === 'running' && !(a.effect as KeyframeEffect)?.target?.closest?.('.skel, .spinner')).length)).toBe(0);
   const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).exclude('canvas').analyze();
   const bad = r.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
   expect(bad.map((v) => `${where}: ${v.id} (${v.impact}) → ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`)).toEqual([]);
@@ -82,6 +80,7 @@ test.describe('Acessibilidade @flow', () => {
   test.beforeEach(({}, info) => { test.skip(!ONLY.test(info.project.name), 'só celular e desktop'); });
 
   test('acervo, caixa aberta, painel e cada passo do editor', async ({ page, errors }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });   // sem transições: o contraste é medido no estado final, não no meio do fade
     await openAcervo(page);
     await axe(page, 'acervo');
     await openBox(page, 'mutacoes');
