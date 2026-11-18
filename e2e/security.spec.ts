@@ -98,3 +98,24 @@ test.describe('Acessibilidade @flow', () => {
     void errors;
   });
 });
+
+test.describe('Resiliência @flow', () => {
+  test.beforeEach(({}, info) => { test.skip(!ONLY.test(info.project.name), 'só celular e desktop'); });
+
+  test('falha ao carregar mostra aviso com "Tentar de novo" (e volta a funcionar)', async ({ page }) => {
+    let block = true;
+    await page.route(/\/assets\/hub-.*\.js$/, (r) => (block ? r.abort() : r.continue()));
+    await page.goto('/admin');
+    await expect(page.getByRole('alert')).toContainText('Não foi possível carregar');
+    block = false;
+    await page.getByRole('button', { name: 'Tentar de novo' }).click();
+    await expect(page.locator('.hub-row').first()).toBeVisible();
+  });
+
+  test('página de privacidade abre a partir do acervo', async ({ page, errors }) => {
+    await openAcervo(page);
+    await page.getByRole('link', { name: 'Privacidade e termos' }).click();
+    await expect(page.getByRole('heading', { name: 'Privacidade e termos' })).toBeVisible();
+    void errors;
+  });
+});

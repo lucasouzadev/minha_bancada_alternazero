@@ -284,11 +284,9 @@ export async function adminPage(root: HTMLElement, id?: string) {
   const artRefresh = () => { clearTimeout(artT); artT = window.setTimeout(renderArt, 120); };
   renderArt();
 
-  const stateChip = h('span', { class: 'state' });
-  const renderState = () => { stateChip.textContent = drop.published ? 'Publicado' : 'Rascunho'; stateChip.classList.toggle('live', drop.published); };
-  const pubIn = h('input', { type: 'checkbox', name: 'published', checked: drop.published, onchange: () => { drop.published = pubIn.checked; renderState(); } });
-  binders.push(() => { pubIn.checked = drop.published; renderState(); });
-  renderState(); renderTitle(); renderLink(); renderPresets(); renderSuggest(); renderItemSuggest();
+  const pubIn = h('input', { type: 'checkbox', name: 'published', checked: drop.published, onchange: () => { drop.published = pubIn.checked; } });
+  binders.push(() => { pubIn.checked = drop.published; });
+  renderTitle(); renderLink(); renderPresets(); renderSuggest(); renderItemSuggest();
 
   // ---------- passos ----------
   const hasArt = () => (drop.artMode === 'dieline' ? !!drop.art.dieline : FACES.some((f) => drop.art[f]));
@@ -349,7 +347,7 @@ export async function adminPage(root: HTMLElement, id?: string) {
       h('button', { class: 'ghost', type: 'button', 'data-testid': 'edit-again', onclick: () => show(0) }, 'Editar'),
       drop.published
         ? h('button', { class: 'primary', type: 'button', 'data-testid': 'see', onclick: () => go(`/c/${encodeURIComponent(drop.slug)}`) }, 'Ver no acervo')
-        : h('button', { class: 'primary', type: 'button', 'data-testid': 'publish-now', onclick: () => { drop.published = true; pubIn.checked = true; renderState(); void save(); } }, 'Publicar agora'));
+        : h('button', { class: 'primary', type: 'button', 'data-testid': 'publish-now', onclick: () => { drop.published = true; pubIn.checked = true; void save(); } }, 'Publicar agora'));
     scroller.scrollTop = 0;
     announce(drop.published ? `${drop.name} está no ar no acervo.` : `${drop.name} salvo como rascunho.`);
     (doneEl.querySelector('h3') as HTMLElement).focus({ preventScroll: true });

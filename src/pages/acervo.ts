@@ -30,7 +30,7 @@ const colsOf = (el: Element) => Math.max(1, parseInt(getComputedStyle(el).getPro
 export async function acervoPage(root: HTMLElement): Promise<Page> {
   const q = new URLSearchParams(location.search).get('c');
   const isShared = q !== null;
-  const owned: Set<string> = isShared ? new Set(q!.split(',').filter(Boolean)) : getOwned();
+  const owned: Set<string> = isShared ? new Set(q!.split(',').filter(Boolean).slice(0, 500).map((x) => x.slice(0, 120))) : getOwned();
   // casca imediata (cabeçalho + esqueletos) enquanto a lista de drops chega
   const shellRows = h('div', { class: 'rows' });
   const shell = h('div', { class: 'acervo', 'aria-busy': 'true' },
@@ -145,7 +145,9 @@ export async function acervoPage(root: HTMLElement): Promise<Page> {
   const tagBtns = ['', ...tagList].map((t) => h('button', { class: 'chip', type: 'button', 'data-tag': t, 'data-testid': t ? 'tag-chip' : 'tag-all', 'aria-pressed': String(t === ''), onclick: () => applyTag(t) }, t || 'Todas'));
   const tagbar = h('nav', { class: 'tagbar', ariaLabel: 'Filtrar por tag', 'data-testid': 'tagbar', hidden: tagList.length === 0 }, ...tagBtns);
   const acervoEl = h('div', { class: 'acervo', 'data-testid': 'acervo' },
-      shelfCanvas, header, tagbar, rowsEl, veil, heroCanvas, artView, sheet, boxBar, peekTab);
+      shelfCanvas, header, tagbar, rowsEl,
+      h('footer', { class: 'legal' }, h('a', { href: '/privacidade.html' }, 'Privacidade e termos')),
+      veil, heroCanvas, artView, sheet, boxBar, peekTab);
   if (calm) acervoEl.classList.add('calm');
   root.append(acervoEl);
   groupRows();

@@ -403,9 +403,6 @@ html:has(.ed),html:has(.ed) body{overflow:hidden;height:100%}
 .ed-title{flex:1;min-width:0;display:grid;gap:3px}
 .ed-title h2{font:700 20px/1 var(--display);text-transform:uppercase;letter-spacing:.04em}
 .ed-title small{color:var(--mut);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ed-top .state{font-size:13px;color:var(--mut);display:inline-flex;align-items:center;gap:6px;white-space:nowrap;margin-right:2px}
-.ed-top .state::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--mut-2)}
-.ed-top .state.live{color:var(--fg-2)}.ed-top .state.live::before{background:var(--acc-hi)}
 .ed-steps{padding:4px max(16px,env(safe-area-inset-right)) 8px max(16px,env(safe-area-inset-left))}
 .ed-steps ol{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .ed-steps button{display:grid;gap:7px;width:100%;min-height:var(--hit);padding:6px 0 0;border:0;background:none;text-align:left;color:var(--mut);align-content:start}
@@ -545,8 +542,6 @@ dialog.sheet-dlg[open]::backdrop{animation:fadein .25s var(--ease-out)}
 .hub-count{color:var(--mut);font-size:13px}
 .hub-new-top{display:none}
 .hub-seg{margin:6px max(16px,env(safe-area-inset-left)) 10px}
-.hub-hint{margin:4px 16px 8px}
-.hub-hint .ico{margin-left:auto;flex:none}
 .hub-list{display:grid;padding:0 max(8px,env(safe-area-inset-left))}
 .hub-row{display:flex;align-items:center;gap:4px;border-top:1px solid var(--line)}
 .hub-row:first-child{border-top:0}
@@ -591,3 +586,11 @@ dialog.sheet-dlg[open]::backdrop{animation:fadein .25s var(--ease-out)}
   .sk-b{animation:none}
   .artview{animation:none}
 }
+
+/* falha ao carregar (rede/servidor) */
+.fail{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px 16px;text-align:center;color:var(--fg-2)}
+.fail h1{font-size:22px;margin:4px 0 0;color:var(--fg)}
+.fail p{margin:0 0 8px;max-width:34ch;color:var(--mut)}
+.legal{position:relative;z-index:2;margin:-96px 0 0;padding:0 16px calc(28px + env(safe-area-inset-bottom));text-align:center;font-size:13px}
+.legal a{color:var(--mut);text-decoration:underline;text-underline-offset:3px;display:inline-block;padding:12px 8px;min-height:44px}
+.legal a:hover{color:var(--fg-2)}

@@ -1,6 +1,7 @@
 import '@fontsource/barlow-condensed/600.css';
 import '@fontsource/barlow-condensed/700.css';
 import { acervoPage, type Page } from './pages/acervo';
+import { h, icon } from './ui';
 
 const root = document.getElementById('app')!;
 let page: Page | undefined, kind = '', seq = 0;
@@ -16,9 +17,23 @@ async function route() {
   const my = ++seq;
   // painel e editor só baixam o próprio código quando alguém entra em /admin
   let next: Page;
+  try {
   if (k === 'hub') { const { hubPage } = await import('./pages/hub'); const c = await hubPage(root); next = { cleanup: () => c && c() }; }
   else if (k === 'editor') { const { adminPage } = await import('./pages/admin'); const c = await adminPage(root, sub === 'novo' ? undefined : sub); next = { cleanup: () => c && c() }; }
   else next = await acervoPage(root);
+  } catch (e) {
+    // rede caiu, servidor fora ou código novo publicado (chunk antigo sumiu): explica e oferece tentar de novo
+    console.error(e);
+    if (my !== seq) return;
+    const chunk = e instanceof TypeError && /dynamically imported module|Importing a module/i.test(e.message);
+    root.replaceChildren(h('main', { class: 'fail', role: 'alert' },
+      icon('alert', 28),
+      h('h1', {}, 'Não foi possível carregar'),
+      h('p', {}, navigator.onLine ? 'O servidor não respondeu. Tente de novo em instantes.' : 'Você está sem internet. Conecte-se e tente de novo.'),
+      h('button', { class: 'primary', type: 'button', onclick: () => { if (chunk) location.reload(); else { kind = ''; void route(); } } }, 'Tentar de novo')));
+    page = undefined; kind = '';
+    return;
+  }
   // navegou de novo enquanto esta página carregava: descarta a que ficou para trás
   if (my !== seq) next.cleanup(); else page = next;
 }
